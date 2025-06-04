@@ -56,13 +56,16 @@ export default {
     return {
       selectedGroup: '',
       selectedChapter: '',
-      groups: ['Grupa A', 'Grupa B', 'Grupa C'],
-      chapters: ['Rozdział 1', 'Rozdział 2', 'Rozdział 3'],
+      groups: ['Grupa A', 'Grupa B', 'Grupa C'], //Placeholder
+      chapters: ['Rozdział 1', 'Rozdział 2', 'Rozdział 3'], //Placeholder
     }
   },
   methods: {
     previewGroup() {
-      alert(`Podgląd grupy: ${this.selectedGroup}`);
+      this.$router.push({
+      name: 'GroupPreview',
+      query: { grupa: this.selectedGroup }
+    });
     }
   }
 }

@@ -6,7 +6,7 @@
 >
 
 
-        <!--Dropdown icon-->
+        <!-- Ikona Hamburger-->
         <button class="btn btn-primary me-3" @click="toggleSidebar">
         ☰
       </button>
@@ -21,7 +21,7 @@
       </div>
     </nav>
 
-    <!-- SIDEBAR MENU -->
+    <!-- Sidebar Menu -->
     <div :class="['offcanvas', sidebarOpen ? 'show' : '', 'offcanvas-start']" tabindex="-1" style="visibility: visible; background-color: #f8f9fa;">
       <div class="offcanvas-header">
         <h5 class="offcanvas-title">Menu</h5>

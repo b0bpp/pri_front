@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '@/views/Home.vue' 
-import ReviewPanel from '@/components/ReviewPanel.vue'
+import ReviewPanel from '@/views/ReviewPanel.vue'
+import GroupPreview from '@/views/GroupPreview.vue'
 
 const routes = [
   {
@@ -12,6 +13,11 @@ const routes = [
     path: '/review-panel',
     name: 'ReviewPanel',
     component: ReviewPanel,
+  },
+  {
+    path: '/group-preview',
+    name: 'GroupPreview',
+    component: GroupPreview,
   },
 ]
 
