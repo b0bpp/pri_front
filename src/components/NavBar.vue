@@ -1,13 +1,11 @@
 <template>
   <div>
     <nav
-  class="navbar navbar-expand-lg navbar-dark bg-primary px-3 shadow mt-1 mx-1"
-  style="border-radius: 1rem;"
->
-
-
-        <!-- Ikona Hamburger-->
-        <button class="btn btn-primary me-3" @click="toggleSidebar">
+      class="navbar navbar-expand-lg navbar-dark bg-primary px-3 shadow mt-1 mx-1"
+      style="border-radius: 1rem;"
+    >
+      <!-- Ikona Hamburger -->
+      <button class="btn btn-primary me-3" @click.stop="toggleSidebar">
         ☰
       </button>
       <a class="navbar-brand fw-bold" href="#">PRI</a>
@@ -22,7 +20,11 @@
     </nav>
 
     <!-- Sidebar Menu -->
-    <div :class="['offcanvas', sidebarOpen ? 'show' : '', 'offcanvas-start']" tabindex="-1" style="visibility: visible; background-color: #f8f9fa;">
+    <div
+      ref="sidebar"
+      :class="['offcanvas', sidebarOpen ? 'show' : '', 'offcanvas-start']"
+      style="background-color: #f8f9fa;"
+    >
       <div class="offcanvas-header">
         <h5 class="offcanvas-title">Menu</h5>
         <button type="button" class="btn-close text-reset" @click="toggleSidebar"></button>
@@ -30,19 +32,20 @@
       <div class="offcanvas-body">
         <ul class="list-group">
           <li class="list-group-item border-0">
-            <router-link to="/" class="text-decoration-none">Home</router-link>
+            <router-link to="/" class="text-decoration-none" @click="toggleSidebar">Home</router-link>
           </li>
           <li class="list-group-item border-0">
-            <router-link to="/review-panel" class="text-decoration-none">Panel recenzji</router-link>
+            <router-link to="/review-panel" class="text-decoration-none" @click="toggleSidebar">Panel recenzji</router-link>
           </li>
           <li class="list-group-item border-0">
-            <router-link to="/upload" class="text-decoration-none">Upload plików</router-link>
+            <router-link to="/upload" class="text-decoration-none" @click="toggleSidebar">Upload plików</router-link>
           </li>
         </ul>
       </div>
     </div>
   </div>
 </template>
+
 
 <script>
 export default {
@@ -59,14 +62,26 @@ export default {
   methods: {
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen;
+    },
+    handleClickOutside(event) {
+      setTimeout(() => {
+        const sidebar = this.$refs.sidebar;
+        if (this.sidebarOpen && sidebar && !sidebar.contains(event.target)) {
+          this.sidebarOpen = false;
+        }
+      }, 10);
     }
   },
   mounted() {
-  fetch("api/v1/")
-      .then((response) => response.text() )
-      .then((data) => {
-        this.msg = data;
-      })
+    //sidebar
+    document.addEventListener('click', this.handleClickOutside);
+
+    //fetche
+    fetch("api/v1/")
+        .then((response) => response.text() )
+        .then((data) => {
+          this.msg = data;
+        })
     fetch("api/v1/", {
         method: "POST",
         headers: {
@@ -92,6 +107,9 @@ export default {
             this.msg = data;
           })
 
+  },
+  beforeUnmount() {
+    document.removeEventListener('click', this.handleClickOutside);
   }
 }
 </script>
@@ -111,4 +129,3 @@ export default {
   transform: translateX(0);
 }
 </style>
-
