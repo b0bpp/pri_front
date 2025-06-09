@@ -32,9 +32,11 @@
           <li class="list-group-item border-0">
             <router-link to="/" class="text-decoration-none">Home</router-link>
           </li>
-
           <li class="list-group-item border-0">
             <router-link to="/review-panel" class="text-decoration-none">Panel recenzji</router-link>
+          </li>
+          <li class="list-group-item border-0">
+            <router-link to="/upload" class="text-decoration-none">Upload plików</router-link>
           </li>
         </ul>
       </div>
