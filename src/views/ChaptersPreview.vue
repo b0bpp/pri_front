@@ -8,10 +8,10 @@
         <strong class="form-label">Wybierz studenta:</strong>
         <select v-model="selectedStudentId" class="dropdown-content" @change="fetchFiles">
           <option disabled value="">-- wybierz --</option>
-          <option v-for="student in students" :key="student.id">{{ student.name }}</option>
+          <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{student.lname}}</option>
         </select>
-        <input type="file" class="file-input" @change="handleFileChange" />
-        <button class="action-btn" :disabled="!selectedStudentId || !selectedFile" @click="uploadFile">Wyślij</button>
+        <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
+        <button class="btn btn-primary" :disabled="!selectedStudentId || !selectedFile" @click="uploadFile">Wyślij</button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
       </div>
 
@@ -59,20 +59,22 @@ export default {
   methods: {
     async fetchStudents() {
       try {
-        const response = await axios.get('/api/v1/students');
+        const response = await axios.get('/api/v1/student');
         this.students = response.data;
-      } catch(error) {
+        console.log('Fetched students:', this.students);
+      } catch (error) {
         console.error('Błąd przy pobieraniu studentów:', error);
+        this.errorMessage = 'Nie udało się pobrać listy studentów.';
         this.students = [];
       }
     },
     async fetchFiles() {
-      if (!this.selectedStudent) return;
+      if (!this.selectedStudentId) return;
 
       try {
-        const response = await axios.get(`/api/v1/view${this.selectedStudentId}`);
+        const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
         this.files = response.data.map(file => ({
-          id: file.fileId,
+          id: file.id,
           name: file.name,
           uploadedAt: file.date
         }));
@@ -87,7 +89,7 @@ export default {
       this.uploadSuccess = false;
     },
     async uploadFile() {
-      if (!this.selectedFile || !this.selectedStudent) return;
+      if (!this.selectedFile || !this.selectedStudentId) return;
 
       const formData = new FormData();
       formData.append('file', this.selectedFile);
@@ -116,6 +118,7 @@ export default {
       });
     },
     previewFile(file) {
+      console.log('Previewing file with ID:', file.id);
       window.open(`/api/v1/download/${file.id}`, '_blank');
     }
   }
