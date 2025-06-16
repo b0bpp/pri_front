@@ -6,12 +6,12 @@
       <!-- Dropdown: Lista studentów i Upload-->
       <div class="student-selector">
         <strong class="form-label">Wybierz studenta:</strong>
-        <select v-model="selectedStudent" class="dropdown-content" @change="fetchFiles">
+        <select v-model="selectedStudentId" class="dropdown-content" @change="fetchFiles">
           <option disabled value="">-- wybierz --</option>
-          <option v-for="student in students" :key="student">{{ student }}</option>
+          <option v-for="student in students" :key="student.id">{{ student.name }}</option>
         </select>
         <input type="file" class="file-input" @change="handleFileChange" />
-        <button class="action-btn" :disabled="!selectedStudent || !selectedFile" @click="uploadFile">Wyślij</button>
+        <button class="action-btn" :disabled="!selectedStudentId || !selectedFile" @click="uploadFile">Wyślij</button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
       </div>
 
@@ -34,7 +34,7 @@
       </table>
 
       <!-- Brak danych -->
-      <p v-else-if="selectedStudent">Brak przesłanych plików.</p>
+      <p v-else-if="selectedStudentId">Brak przesłanych plików.</p>
     </div>
   </div>
 </template>
@@ -46,25 +46,36 @@ export default {
   name: 'GroupPreview',
   data() {
     return {
-      selectedStudent: '',
-      students: [
-        'Patryk Piec',
-        'Jarosław Romańczuk',
-        'Tomasz Wasyłyk',
-        'Bartosz Wiśniewski'
-      ],
+      selectedStudentId: '',
+      students: [],
       files: [],
       selectedFiles: null,
       uploadSuccess: false
     }
   },
+  created() {
+    this.fetchStudents();
+  },
   methods: {
+    async fetchStudents() {
+      try {
+        const response = await axios.get('/api/v1/students');
+        this.students = response.data;
+      } catch(error) {
+        console.error('Błąd przy pobieraniu studentów:', error);
+        this.students = [];
+      }
+    },
     async fetchFiles() {
       if (!this.selectedStudent) return;
 
       try {
-        const response = await axios.get(`/api/files?student=${encodeURIComponent(this.selectedStudent)}`);
-        this.files = response.data;
+        const response = await axios.get(`/api/v1/view${this.selectedStudentId}`);
+        this.files = response.data.map(file => ({
+          id: file.fileId,
+          name: file.name,
+          uploadedAt: file.date
+        }));
         this.uploadSuccess = false;
       } catch (error) {
         console.error('Błąd przy pobieraniu plików:', error);
@@ -80,15 +91,15 @@ export default {
 
       const formData = new FormData();
       formData.append('file', this.selectedFile);
-      formData.append('student', this.selectedStudent);
+      formData.append('student', this.selectedStudentId);
 
       try {
-        await axios.post('/api/files', formData, {
+        await axios.post('/api/v1/files', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        })
         this.uploadSuccess = true;
         this.selectedFile = null;
-        this.$refs.fileInput ? (this.$refs.fileInput.value = '') : null;
+        this.$refs.fileInput.value = '';
         await this.fetchFiles();
       } catch (error) {
         console.error('Błąd przy uploadzie:', error);
@@ -105,7 +116,7 @@ export default {
       });
     },
     previewFile(file) {
-      window.open(`/api/files/preview/${file.id}`, '_blank');
+      window.open(`/api/v1/download/${file.id}`, '_blank');
     }
   }
 }
