@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '@/views/Home.vue' 
-import ReviewPanel from '@/views/ReviewPanel.vue'
+import GroupPanel from '@/views/GroupPanel.vue'
 import ChaptersPreview from '@/views/ChaptersPreview.vue'
 import UploadFile from '@/components/UploadFile.vue'
 
@@ -11,9 +11,9 @@ const routes = [
     component: Home,
   },
   {
-    path: '/review-panel',
-    name: 'ReviewPanel',
-    component: ReviewPanel,
+    path: '/group-panel',
+    name: 'GroupPanel',
+    component: GroupPanel,
   },
   {
     path: '/chapters-preview/:groupId',

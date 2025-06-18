@@ -35,7 +35,7 @@
             <router-link to="/" class="text-decoration-none" @click="toggleSidebar">Home</router-link>
           </li>
           <li class="list-group-item border-0">
-            <router-link to="/review-panel" class="text-decoration-none" @click="toggleSidebar">Panel recenzji</router-link>
+            <router-link to="/group-panel" class="text-decoration-none" @click="toggleSidebar">Panel grup</router-link>
           </li>
           <li class="list-group-item border-0">
             <router-link to="/upload" class="text-decoration-none" @click="toggleSidebar">Upload plików</router-link>

@@ -1,6 +1,6 @@
 <template>
   <div class="container mt-4">
-    <h2 class="mb-4">Panel recenzji</h2>
+    <h2 class="mb-4">Panel grup</h2>
 
     <div class="mb-3">
       <label for="groupSelect" class="form-label">Wybierz grupę</label>
@@ -12,13 +12,13 @@
       </select>
     </div>
 
-    <button class="btn btn-primary" @click="previewWorks">Podgląd prac</button>
+    <button class="btn btn-primary" @click="previewWorks">Podgląd grupy</button>
   </div>
 </template>
 
 <script>
 export default {
-  name: 'ReviewPanel',
+  name: 'GroupPanel',
   data() {
     return {
       selectedGroup: '',
