@@ -3,31 +3,37 @@
     <div class="card">
       <h2 class="title">Przegląd rozdziałów</h2>
 
-      <!-- Dropdown: Lista studentów i Upload-->
-      <div class="student-selector">
+      <!-- Dropdown: Lista studentów dla promotora -->
+      <div class="student-selector" v-if="isPromoter">
         <strong class="form-label">Wybierz studenta:</strong>
-        <select v-model="selectedStudentId" class="dropdown-content" @change="fetchFiles">
+        <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
           <option disabled value="">-- wybierz --</option>
           <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{student.lname}}</option>
         </select>
+      </div>
+      
+      <!-- Upload plików -->
+      <div class="upload-section">
+        <h3>Prześlij plik</h3>
         <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
         <button class="btn btn-primary" :disabled="!selectedFile" @click="uploadFile"> Wyślij </button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
+        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
       
-      <!-- Tabela rozdziałów -->
-      <table class="table" v-if="files.length > 0">
+      <!-- Tabela plików -->
+      <table class="table" v-if="isPromoter ? studentFiles.length > 0 : files.length > 0">
         <thead>
           <tr>
-            <th>Osoba</th>
+            <th>Wysłane przez</th>
             <th>Nazwa pliku</th>
             <th>Data przesłania</th>
             <th>Akcja</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(file, index) in files" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
-            <td>{{ file.sender }}</td>
+          <tr v-for="(file, index) in isPromoter ? studentFiles : files" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
+            <td>{{ file.senderName }}</td>
             <td>{{ file.name }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
             <td><button class="action-btn" @click="previewFile(file)">Podgląd</button></td>
@@ -36,7 +42,8 @@
       </table>
 
       <!-- Brak danych -->
-      <p v-else-if="selectedStudentId">Brak przesłanych plików.</p>
+      <p v-else-if="isPromoter && selectedStudentId">Brak przesłanych plików dla wybranego studenta.</p>
+      <p v-else-if="isPromoter && files.length === 0">Brak przesłanych plików.</p>
     </div>
   </div>
 </template>
@@ -48,23 +55,37 @@ export default {
   name: 'GroupPreview',
   data() {
     return {
+      isPromoter: false,
       selectedStudentId: '',
       students: [],
       files: [],
+      studentFiles: [],
       selectedFile: null,
+      relatedFileId: '',
       uploadSuccess: false,
       errorMessage: ''
     }
   },
   created() {
+    this.checkUserRole();
+    this.fetchFiles();
     this.fetchStudents();
   },
   methods: {
+    async checkUserRole() {
+      try {
+        const response = await axios.get('/api/v1/?');
+        this.isPromoter = response.data.roles.includes('PROMOTER');
+      } catch (error) {
+        console.error('Błąd przy sprawdzaniu roli:', error);
+        this.isPromoter = false;
+      }
+    },
     async fetchStudents() {
+      if (!this.isPromoter) return;
       try {
         const response = await axios.get('/api/v1/student');
         this.students = response.data;
-        console.log('Fetched students:', this.students);
       } catch (error) {
         console.error('Błąd przy pobieraniu studentów:', error);
         this.errorMessage = 'Nie udało się pobrać listy studentów.';
@@ -72,32 +93,57 @@ export default {
       }
     },
     async fetchFiles() {
-      if (!this.selectedStudentId) return;
-
       try {
-        const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
+        const response = await axios.get('/api/v1/view');
         this.files = response.data.map(file => ({
           id: file.id,
           name: file.name,
           uploadedAt: file.date,
-          sender: file.student ? `${file.student.fname} ${file.student.lname}` : 'Unknown'
+          senderName: file.senderName,
+          senderType: file.senderType
         }));
         this.uploadSuccess = false;
       } catch (error) {
         console.error('Błąd przy pobieraniu plików:', error);
         this.files = [];
+        this.errorMessage = 'Nie udało się pobrać plików.';
+      }
+    },
+    async fetchStudentFiles() {
+      if(!this.selectedStudentId) {
+        this.studentFiles = [];
+        return;
+      }
+      try{
+        const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
+        this.studentFiles = response.data.map(file ==> ({
+          id: file.id,
+          name: file.name,
+          uploadedAt: file.senderName,
+          senderType: file.senderType
+        }));
+      } catch (error) {
+        console.error('Błąd przy pobieraniu plików studenta:', error);
+        this.studentFiles = [];
+        this.errorMessage = 'Nie udało się pobrać plików studenta.';
       }
     },
     handleFileChange(event) {
       this.selectedFile = event.target.files[0];
       this.uploadSuccess = false;
+      this.errorMessage = '';
     },
     async uploadFile() {
-      if (!this.selectedFile || !this.selectedStudentId) return;
+      if (!this.selectedFile) return;
 
       const formData = new FormData();
       formData.append('file', this.selectedFile);
-      formData.append('student', this.selectedStudentId);
+      if (this.isPromoter && this.selectedStudentId) {
+        formData.append('studentId', this.selectedStudentId);
+        if (this.relatedFileId) {
+          formData.append('relatedFileId', this.relatedFileId);
+        }
+      }
 
       try {
         await axios.post('/api/v1/files', formData, {
@@ -106,9 +152,15 @@ export default {
         this.uploadSuccess = true;
         this.selectedFile = null;
         this.$refs.fileInput.value = '';
-        await this.fetchFiles();
+        this.relatedFileId = '';
+        if (this.isPromoter) {
+          await this.fetchStudentFiles();
+        } esle {
+          await this.fetchFiles();
+        }
       } catch (error) {
         console.error('Błąd przy uploadzie:', error);
+        this.errorMessage = error.response?.data?.message || 'Nie udało się przesłać pliku.';
       }
     },
     formatDate(dateString) {
