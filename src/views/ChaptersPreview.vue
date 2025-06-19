@@ -11,14 +11,15 @@
           <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{student.lname}}</option>
         </select>
         <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
-        <button class="btn btn-primary" :disabled="!selectedStudentId || !selectedFile" @click="uploadFile">Wyślij</button>
+        <button class="btn btn-primary" :disabled="!selectedFile" @click="uploadFile"> Wyślij </button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
       </div>
-
+      
       <!-- Tabela rozdziałów -->
       <table class="table" v-if="files.length > 0">
         <thead>
           <tr>
+            <th>Osoba</th>
             <th>Nazwa pliku</th>
             <th>Data przesłania</th>
             <th>Akcja</th>
@@ -26,6 +27,7 @@
         </thead>
         <tbody>
           <tr v-for="(file, index) in files" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
+            <td>{{ file.sender }}</td>
             <td>{{ file.name }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
             <td><button class="action-btn" @click="previewFile(file)">Podgląd</button></td>
@@ -49,8 +51,9 @@ export default {
       selectedStudentId: '',
       students: [],
       files: [],
-      selectedFiles: null,
-      uploadSuccess: false
+      selectedFile: null,
+      uploadSuccess: false,
+      errorMessage: ''
     }
   },
   created() {
@@ -76,7 +79,8 @@ export default {
         this.files = response.data.map(file => ({
           id: file.id,
           name: file.name,
-          uploadedAt: file.date
+          uploadedAt: file.date,
+          sender: file.student ? `${file.student.fname} ${file.student.lname}` : 'Unknown'
         }));
         this.uploadSuccess = false;
       } catch (error) {
