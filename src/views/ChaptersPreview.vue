@@ -116,7 +116,7 @@ export default {
       }
       try{
         const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
-        this.studentFiles = response.data.map(file ==> ({
+        this.studentFiles = response.data.map(file => ({
           id: file.id,
           name: file.name,
           uploadedAt: file.senderName,
@@ -155,7 +155,7 @@ export default {
         this.relatedFileId = '';
         if (this.isPromoter) {
           await this.fetchStudentFiles();
-        } esle {
+        } else {
           await this.fetchFiles();
         }
       } catch (error) {
