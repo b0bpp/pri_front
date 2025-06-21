@@ -3,6 +3,7 @@ import Home from '@/views/Home.vue'
 import GroupPanel from '@/views/GroupPanel.vue'
 import ChaptersPreview from '@/views/ChaptersPreview.vue'
 import UploadFile from '@/components/UploadFile.vue'
+import Checklist from '@/views/Checklist.vue'
 
 const routes = [
   {
@@ -21,10 +22,15 @@ const routes = [
     component: ChaptersPreview,
     props: true,
   },
-   {
+  {
     path: '/upload',
     name: 'UploadFile',
     component: UploadFile,
+  },
+  {
+    path: '/checklist',
+    name: 'Checklist',
+    component: Checklist,
   },
 ]
 

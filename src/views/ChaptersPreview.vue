@@ -6,12 +6,22 @@
       <!-- Dropdown: Lista studentów dla promotora -->
       <div class="student-selector" v-if="isPromoter">
         <strong class="form-label">Wybierz studenta:</strong>
-        <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
-          <option disabled value="">-- wybierz --</option>
-          <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{student.lname}}</option>
-        </select>
+        <div class="student-list">
+          <div v-for="student in students" :key="student.id" class="student-item">
+            <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
+              <option disabled value="">-- wybierz --</option>
+              <option v-for="s in students" :key="s.id" :value="s.id">{{ s.fname }} {{ s.lname }}</option>
+            </select>
+            <button class="checklist-btn" @click="goToChecklist(student.id)">Checklista</button>
+          </div>
+        </div>
       </div>
-      
+
+      <!--Checklista dla studentów-->
+      <div v-else class="checklist-section">
+        <button class="checklist-btn" @click="goToStudentChecklist">Moja Checklista</button>
+      </div>
+
       <!-- Upload plików -->
       <div class="upload-section">
         <h3>Prześlij plik</h3>
@@ -63,7 +73,8 @@ export default {
       selectedFile: null,
       relatedFileId: '',
       uploadSuccess: false,
-      errorMessage: ''
+      errorMessage: '',
+      userId: null
     }
   },
   created() {
@@ -176,6 +187,26 @@ export default {
     previewFile(file) {
       console.log('Previewing file with ID:', file.id);
       window.open(`/api/v1/download/${file.id}`, '_blank');
+    },
+    goToChecklist(studentId) {
+      this.$router.push(`/checklist/${studentId}`);
+    },
+    async goToStudentChecklist() {
+      const student = await this.getStudentIdForUser();
+      if (student) {
+        this.$router.push(`/checklist/${student.id}`);
+      } else {
+        this.errorMessage = 'Nie udało się znaleźć twojego profilu studenta.';
+      }
+    },
+    async getStudentIdForUser() {
+      try {
+        const response = await axios.get('/api/v1/student');
+        return response.data.find(student => student.userId === this.userId);
+      } catch (error) {
+        console.error('Błąd przy pobieraniu profilu studenta:', error);
+        return null;
+      }
     }
   }
 }
