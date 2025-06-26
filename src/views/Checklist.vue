@@ -18,12 +18,13 @@
 <script>
 
 import axios from 'axios'
+import authStore from '/src/stores/authStore';
 
 export default {
     name: 'Checklist',
     data() {
         return {
-            isPromoter: false,
+            isPromoter: authStore.isPromoter,
             studentId: null,
             studentName: '',
             checklist: { items: [] },
@@ -31,20 +32,12 @@ export default {
         }
     },
     created() {
-        this.studentId = this.$route.params.studentId;
-        this.checkUserRole();
+        this.studentId = this.$route.params.studentId || 2;
+        this.isPromoter = authStore.isPromoter;
         this.fetchCheckList();
     },
     methods: {
-        async checkUserRole() {
-            try {
-                const response = await axios.get('/api/v1/?');
-                this.isPromoter = response.data.roles.includes('PROMOTER');
-            } catch (error) {
-                console.error('Błąd przy sprawdzaniu roli:', error);
-                this.isPromoter = false;
-            }
-        },
+
         async fetchCheckList() {
             try {
                 const response = await axios.get(`/api/v1/checklist/${this.studentId}`);
@@ -55,6 +48,18 @@ export default {
                 this.errorMessage = 'Nie udało się zapisać checklisty.';
             }
         },
+
+        async saveChecklist() {
+            if (!this.isPromoter) return;
+            try {
+                await axios.post(`/api/v1/checklist/${this.studentId}`, this.checklist.items);
+                this.errorMessage = '';
+            } catch (error) {
+                console.error('Błąd przy zapisywaniu checklisty:', error);
+                this.errorMessage = 'Nie udało się zapisać checklisty.';
+            }
+        },
+        
         async getStudentName(studentId) {
             try {
                 const response = await axios.get('/api/v1/student');

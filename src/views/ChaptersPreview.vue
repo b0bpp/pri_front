@@ -60,12 +60,13 @@
 
 <script>
 import axios from 'axios'
+import authStore from '/src/stores/authStore.js'
 
 export default {
   name: 'GroupPreview',
   data() {
     return {
-      isPromoter: false,
+      isPromoter: authStore.isPromoter,
       selectedStudentId: '',
       students: [],
       files: [],
@@ -78,20 +79,12 @@ export default {
     }
   },
   created() {
-    this.checkUserRole();
+    this.isPromoter = authStore.isPromoter;
     this.fetchFiles();
     this.fetchStudents();
   },
   methods: {
-    async checkUserRole() {
-      try {
-        const response = await axios.get('/api/v1/?');
-        this.isPromoter = response.data.roles.includes('PROMOTER');
-      } catch (error) {
-        console.error('Błąd przy sprawdzaniu roli:', error);
-        this.isPromoter = false;
-      }
-    },
+
     async fetchStudents() {
       if (!this.isPromoter) return;
       try {
@@ -105,7 +98,7 @@ export default {
     },
     async fetchFiles() {
       try {
-        const response = await axios.get('/api/v1/view');
+        const response = await axios.get('/api/v1/view/2');
         this.files = response.data.map(file => ({
           id: file.id,
           name: file.name,
