@@ -35,10 +35,13 @@
             <router-link to="/" class="text-decoration-none" @click="toggleSidebar">Home</router-link>
           </li>
           <li class="list-group-item border-0">
-            <router-link to="/group-panel" class="text-decoration-none" @click="toggleSidebar">Panel grup</router-link>
+            <router-link to="/groups-panel" class="text-decoration-none" @click="toggleSidebar">Panel grup</router-link>
           </li>
-          <li class="list-group-item border-0">
-            <router-link to="/upload" class="text-decoration-none" @click="toggleSidebar">Upload plików</router-link>
+          <li class="list-group-item border-0" v-if="authStore.userId">
+            <router-link to="/chapters-preview/1" class="text-decoration-none" @click="toggleSidebar">Przegląd rozdziałów</router-link>
+          </li>
+          <li class="list-group-item border-0" v-if="authStore.userId">
+            <button class="btn btn-link text-decoration-none p-0" @click="logout">Wyloguj</button>
           </li>
         </ul>
       </div>
@@ -46,18 +49,37 @@
   </div>
 </template>
 
-
 <script>
+import authStore from '/src/stores/authStore.js';
+
 export default {
   name: 'NavBar',
   data() {
     return {
       sidebarOpen: false,
-      user: {
-        name: 'Patryk Piec', // Placeholder
-        role: 'admin', // Placeholder
-      },
+      authStore: authStore,
     };
+  },
+  computed: {
+    user() {
+      if (!authStore.userId) {
+        return {
+          name: 'Gość',
+          role: 'Niezalogowany'
+        };
+      }
+      
+      const name = authStore.fname && authStore.lname 
+        ? `${authStore.fname} ${authStore.lname}` 
+        : 'Nieznany użytkownik';
+      
+      const role = authStore.isPromoter ? 'Promotor' : 'Student';
+      
+      return {
+        name: name,
+        role: role
+      };
+    }
   },
   methods: {
     toggleSidebar() {
@@ -70,43 +92,15 @@ export default {
           this.sidebarOpen = false;
         }
       }, 10);
+    },
+    logout() {
+      authStore.logout();
+      this.$router.push('/');
+      this.toggleSidebar();
     }
   },
   mounted() {
-    //sidebar
     document.addEventListener('click', this.handleClickOutside);
-
-    //fetche
-    fetch("api/v1/")
-        .then((response) => response.text() )
-        .then((data) => {
-          this.msg = data;
-        })
-    fetch("api/v1/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          id: 2,
-          chapter_id: 3,
-          chapter_title: "tst",
-          group_id: 2
-        })
-      })
-          .then((response) => response.text())
-          .then((data) => {
-            this.msg = data;
-          })
-
-
-      fetch("api/v1/1", {
-        method: "DELETE"})
-          .then((response) => response.text())
-          .then((data) => {
-            this.msg = data;
-          })
-
   },
   beforeUnmount() {
     document.removeEventListener('click', this.handleClickOutside);
@@ -127,5 +121,17 @@ export default {
 }
 .offcanvas.show {
   transform: translateX(0);
+}
+
+.btn-link {
+  color: inherit !important;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: none;
+}
+
+.btn-link:hover {
+  text-decoration: underline !important;
 }
 </style>
