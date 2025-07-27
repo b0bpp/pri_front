@@ -50,7 +50,6 @@ authStore.logout = () => {
   authStore.lname = '';
 };
 
-// Debug: log current state
 console.log('AuthStore initialized:', { ...authStore });
 
 export default authStore;
