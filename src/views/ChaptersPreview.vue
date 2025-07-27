@@ -6,18 +6,14 @@
       <!-- Dropdown: Lista studentów dla promotora -->
       <div class="student-selector" v-if="isPromoter">
         <strong class="form-label">Wybierz studenta:</strong>
-        <div class="student-list">
-          <div v-for="student in students" :key="student.id" class="student-item">
-            <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
-              <option disabled value="">-- wybierz --</option>
-              <option v-for="s in students" :key="s.id" :value="s.id">{{ s.fname }} {{ s.lname }}</option>
-            </select>
-            <button class="checklist-btn" @click="goToChecklist(student.id)">Checklista</button>
-          </div>
-        </div>
+        <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
+          <option disabled value="">-- wybierz --</option>
+          <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{ student.lname }}</option>
+        </select>
+        <button v-if="selectedStudentId" class="checklist-btn" @click="goToChecklist(selectedStudentId)">Checklista</button>
       </div>
 
-      <!--Checklista dla studentów-->
+      <!-- Checklista dla studentów -->
       <div v-else class="checklist-section">
         <button class="checklist-btn" @click="goToStudentChecklist">Moja Checklista</button>
       </div>
@@ -26,11 +22,11 @@
       <div class="upload-section">
         <h3>Prześlij plik</h3>
         <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
-        <button class="btn btn-primary" :disabled="!selectedFile" @click="uploadFile"> Wyślij </button>
+        <button class="btn btn-primary" :disabled="!selectedFile" @click="uploadFile">Wyślij</button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
-      
+
       <!-- Tabela plików -->
       <table class="table" v-if="isPromoter ? studentFiles.length > 0 : files.length > 0">
         <thead>
@@ -43,8 +39,8 @@
         </thead>
         <tbody>
           <tr v-for="(file, index) in isPromoter ? studentFiles : files" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
-            <td>{{ file.senderName }}</td>
-            <td>{{ file.name }}</td>
+            <td>{{ file.senderName || 'Nieznany' }}</td>
+            <td>{{ file.name || 'Brak Nazwy' }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
             <td><button class="action-btn" @click="previewFile(file)">Podgląd</button></td>
           </tr>
@@ -59,11 +55,11 @@
 </template>
 
 <script>
-import axios from 'axios'
-import authStore from '/src/stores/authStore.js'
+import axios from 'axios';
+import authStore from '/src/stores/authStore.js';
 
 export default {
-  name: 'GroupPreview',
+  name: 'ChaptersPreview',
   data() {
     return {
       isPromoter: authStore.isPromoter,
@@ -72,19 +68,22 @@ export default {
       files: [],
       studentFiles: [],
       selectedFile: null,
-      relatedFileId: '',
       uploadSuccess: false,
       errorMessage: '',
-      userId: null
-    }
+      userId: authStore.userId,
+    };
   },
   created() {
     this.isPromoter = authStore.isPromoter;
-    this.fetchFiles();
+    this.userId = authStore.userId;
+    if (this.userId) {
+      this.fetchFiles();
+    } else {
+      this.errorMessage = 'Brak zalogowanego użytkownika. Proszę zalogować się ponownie.';
+    }
     this.fetchStudents();
   },
   methods: {
-
     async fetchStudents() {
       if (!this.isPromoter) return;
       try {
@@ -97,15 +96,14 @@ export default {
       }
     },
     async fetchFiles() {
+      if (!this.userId) {
+        this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
+        return;
+      }
       try {
-        const response = await axios.get('/api/v1/view/2');
-        this.files = response.data.map(file => ({
-          id: file.id,
-          name: file.name,
-          uploadedAt: file.date,
-          senderName: file.senderName,
-          senderType: file.senderType
-        }));
+        const response = await axios.get(`/api/v1/view/${this.userId}`);
+        this.files = await this.mapFiles(response.data);
+        console.log('Files fetched:', this.files);
         this.uploadSuccess = false;
       } catch (error) {
         console.error('Błąd przy pobieraniu plików:', error);
@@ -114,59 +112,115 @@ export default {
       }
     },
     async fetchStudentFiles() {
-      if(!this.selectedStudentId) {
+      if (!this.selectedStudentId) {
         this.studentFiles = [];
         return;
       }
-      try{
+      try {
         const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
-        this.studentFiles = response.data.map(file => ({
-          id: file.id,
-          name: file.name,
-          uploadedAt: file.senderName,
-          senderType: file.senderType
-        }));
+        this.studentFiles = await this.mapFiles(response.data);
+        console.log('Student files fetched:', this.studentFiles);
       } catch (error) {
         console.error('Błąd przy pobieraniu plików studenta:', error);
         this.studentFiles = [];
         this.errorMessage = 'Nie udało się pobrać plików studenta.';
       }
     },
+    async mapFiles(files) {
+      console.log('Raw files from API:', files);
+      let allStudents = [];
+      try {
+        const studentsResponse = await axios.get('/api/v1/student');
+        allStudents = studentsResponse.data;
+        console.log('All students from API:', allStudents);
+      } catch (error) {
+        console.error('Error fetching all students:', error);
+      }
+      
+      return files.map((file) => {
+        console.log('Processing file:', file); 
+        
+        let senderName = 'Nieznany';
+        let senderUserId = null;
+      
+        if (file.student && file.student.id) {
+          senderUserId = file.student.id;
+          console.log('Student from file:', file.student); 
+          console.log('Student properties:', Object.keys(file.student)); 
+          
+          if (file.student.fName && file.student.lName) {
+            senderName = `${file.student.fName} ${file.student.lName}`;
+            console.log('Got name from nested student:', senderName);
+          } else {
+            console.log('Looking up student with ID:', senderUserId, 'in students list');
+            const sender = allStudents.find(student => student.id === senderUserId);
+            console.log('Found sender in list:', sender);
+            
+            if (sender) {
+              console.log('Sender properties from list:', Object.keys(sender)); 
+              
+              if (sender.fName && sender.lName) {
+                senderName = `${sender.fName} ${sender.lName}`;
+              } else if (sender.fname && sender.lname) {
+                senderName = `${sender.fname} ${sender.lname}`;
+              } else if (sender.firstName && sender.lastName) {
+                senderName = `${sender.firstName} ${sender.lastName}`;
+              } else if (sender.f_name && sender.l_name) {
+                senderName = `${sender.f_name} ${sender.l_name}`;
+              }
+              console.log('Final name from lookup:', senderName);
+            } else {
+              console.log('No sender found with ID:', senderUserId);
+            }
+          }
+        }
+        
+        console.log('Final sender info:', { senderName, senderUserId });
+        
+        return {
+          id: file.id,
+          name: file.name || 'Brak nazwy',
+          uploadedAt: file.date,
+          senderName: senderName,
+          senderType: senderUserId === this.userId ? (this.isPromoter ? 'PROMOTER' : 'STUDENT') : 'OTHER',
+        };
+      });
+    },
+
     handleFileChange(event) {
       this.selectedFile = event.target.files[0];
       this.uploadSuccess = false;
       this.errorMessage = '';
     },
+
     async uploadFile() {
-      if (!this.selectedFile) return;
+      const file = this.selectedFile;
+      if (!file) {
+        this.errorMessage = 'Nie wybrano pliku.';
+        return;
+      }
 
       const formData = new FormData();
-      formData.append('file', this.selectedFile);
-      if (this.isPromoter && this.selectedStudentId) {
-        formData.append('studentId', this.selectedStudentId);
-        if (this.relatedFileId) {
-          formData.append('relatedFileId', this.relatedFileId);
-        }
-      }
+      formData.append('file', file);
+
+      const uploaderId = authStore.userId;
+      formData.append('uploaderId', uploaderId);
+      const targetStudentId = this.isPromoter ? this.selectedStudentId : uploaderId;
+      formData.append('targetStudentId', targetStudentId);
 
       try {
-        await axios.post('/api/v1/files', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
+        await axios.post('/api/v1/files', formData);
         this.uploadSuccess = true;
         this.selectedFile = null;
-        this.$refs.fileInput.value = '';
-        this.relatedFileId = '';
-        if (this.isPromoter) {
-          await this.fetchStudentFiles();
-        } else {
-          await this.fetchFiles();
-        }
+        this.$refs.fileInput.value = null;
+        this.isPromoter ? this.fetchStudentFiles() : this.fetchFiles();
       } catch (error) {
-        console.error('Błąd przy uploadzie:', error);
-        this.errorMessage = error.response?.data?.message || 'Nie udało się przesłać pliku.';
+        console.error('Błąd przy przesyłaniu pliku:', error);
+        this.errorMessage = 'Nie udało się przesłać pliku.';
       }
     },
+
+
     formatDate(dateString) {
       const date = new Date(dateString);
       return date.toLocaleDateString('pl-PL', {
@@ -174,7 +228,7 @@ export default {
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
       });
     },
     previewFile(file) {
@@ -184,25 +238,15 @@ export default {
     goToChecklist(studentId) {
       this.$router.push(`/checklist/${studentId}`);
     },
-    async goToStudentChecklist() {
-      const student = await this.getStudentIdForUser();
-      if (student) {
-        this.$router.push(`/checklist/${student.id}`);
-      } else {
-        this.errorMessage = 'Nie udało się znaleźć twojego profilu studenta.';
+    goToStudentChecklist() {
+      if (!this.userId) {
+        this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
+        return;
       }
+      this.$router.push(`/checklist/${this.userId}`);
     },
-    async getStudentIdForUser() {
-      try {
-        const response = await axios.get('/api/v1/student');
-        return response.data.find(student => student.userId === this.userId);
-      } catch (error) {
-        console.error('Błąd przy pobieraniu profilu studenta:', error);
-        return null;
-      }
-    }
-  }
-}
+  },
+};
 </script>
 
 <style scoped>

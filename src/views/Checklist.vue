@@ -32,10 +32,9 @@ export default {
         }
     },
     created() {
-        this.studentId = this.$route.params.studentId || 2;
-        this.isPromoter = authStore.isPromoter;
-        this.fetchCheckList();
-    },
+        this.studentId = this.$route.params.studentId || '2';
+        this.fetchChecklist();
+        },
     methods: {
 
         async fetchCheckList() {
