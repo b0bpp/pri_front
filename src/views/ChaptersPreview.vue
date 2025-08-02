@@ -8,7 +8,7 @@
         <strong class="form-label">Wybierz studenta:</strong>
         <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
           <option disabled value="">-- wybierz --</option>
-          <option v-for="student in students" :key="student.id" :value="student.id">{{ student.fname }} {{ student.lname }}</option>
+          <option v-for="student in students" :key="student.id" :value="student.id">{{ getStudentDisplayName(student) }}</option>
         </select>
         <button v-if="selectedStudentId" class="checklist-btn" @click="goToChecklist(selectedStudentId)">Checklista</button>
       </div>
@@ -22,13 +22,19 @@
       <div class="upload-section">
         <h3>Prześlij plik</h3>
         <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
-        <button class="btn btn-primary" :disabled="!selectedFile" @click="uploadFile">Wyślij</button>
+        <button 
+          class="btn btn-primary" 
+          :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
+          @click="uploadFile"
+        >
+          Wyślij
+        </button>
         <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
 
       <!-- Tabela plików -->
-      <table class="table" v-if="isPromoter ? studentFiles.length > 0 : files.length > 0">
+      <table class="table" v-if="displayFiles.length > 0">
         <thead>
           <tr>
             <th>Wysłane przez</th>
@@ -38,7 +44,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(file, index) in isPromoter ? studentFiles : files" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
+          <tr v-for="(file, index) in displayFiles" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
             <td>{{ file.senderName || 'Nieznany' }}</td>
             <td>{{ file.name || 'Brak Nazwy' }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
@@ -49,7 +55,8 @@
 
       <!-- Brak danych -->
       <p v-else-if="isPromoter && selectedStudentId">Brak przesłanych plików dla wybranego studenta.</p>
-      <p v-else-if="isPromoter && files.length === 0">Brak przesłanych plików.</p>
+      <p v-else-if="!isPromoter">Brak przesłanych plików.</p>
+      <p v-else>Wybierz studenta, aby zobaczyć pliki.</p>
     </div>
   </div>
 </template>
@@ -73,6 +80,11 @@ export default {
       userId: authStore.userId,
     };
   },
+  computed: {
+    displayFiles() {
+      return this.isPromoter ? this.studentFiles : this.files;
+    }
+  },
   created() {
     this.isPromoter = authStore.isPromoter;
     this.userId = authStore.userId;
@@ -84,6 +96,22 @@ export default {
     this.fetchStudents();
   },
   methods: {
+
+    getStudentDisplayName(student) {
+      const firstName = student.fName || student.fname || student.firstName || student.f_name || '';
+      const lastName = student.lName || student.lname || student.lastName || student.l_name || '';
+      
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      } else if (firstName) {
+        return firstName;
+      } else if (lastName) {
+        return lastName;
+      } else {
+        return `Student ID: ${student.id}`;
+      }
+    },
+
     async fetchStudents() {
       if (!this.isPromoter) return;
       try {
@@ -95,14 +123,15 @@ export default {
         this.students = [];
       }
     },
+    
     async fetchFiles() {
       if (!this.userId) {
         this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
         return;
       }
       try {
-        const response = await axios.get(`/api/v1/view/${this.userId}`);
-        this.files = await this.mapFiles(response.data);
+        const response = await axios.get(`/api/v1/view?id=${this.userId}`);
+        this.files = await this.mapFiles(response.data.versions || []);
         console.log('Files fetched:', this.files);
         this.uploadSuccess = false;
       } catch (error) {
@@ -111,14 +140,15 @@ export default {
         this.errorMessage = 'Nie udało się pobrać plików.';
       }
     },
+    
     async fetchStudentFiles() {
       if (!this.selectedStudentId) {
         this.studentFiles = [];
         return;
       }
       try {
-        const response = await axios.get(`/api/v1/view/${this.selectedStudentId}`);
-        this.studentFiles = await this.mapFiles(response.data);
+        const response = await axios.get(`/api/v1/view?id=${this.selectedStudentId}`);
+        this.studentFiles = await this.mapFiles(response.data.versions || []);
         console.log('Student files fetched:', this.studentFiles);
       } catch (error) {
         console.error('Błąd przy pobieraniu plików studenta:', error);
@@ -126,8 +156,27 @@ export default {
         this.errorMessage = 'Nie udało się pobrać plików studenta.';
       }
     },
-    async mapFiles(files) {
-      console.log('Raw files from API:', files);
+    
+    async getFileNameFromContent(fileId) {
+      if (this.fileContentCache.has(fileId)) {
+        return this.fileContentCache.get(fileId);
+      }
+
+      try {
+        const response = await axios.get(`/api/v1/file-content/${fileId}`);
+        const fileName = response.data.fileName || response.data.file_name || null;
+        this.fileContentCache.set(fileId, fileName);
+        return fileName;
+      } catch (error) {
+        console.log('Could not fetch file content for filename:', error);
+        this.fileContentCache.set(fileId, null);
+        return null;
+      }
+    },
+
+    async mapFiles(versions) {
+      console.log('Raw versions from API:', versions);
+      
       let allStudents = [];
       try {
         const studentsResponse = await axios.get('/api/v1/student');
@@ -137,52 +186,43 @@ export default {
         console.error('Error fetching all students:', error);
       }
       
-      return files.map((file) => {
-        console.log('Processing file:', file); 
+      return versions.map((version) => {
+        console.log('Processing version:', version);
+        
+        let fileId = null;
+        if (version.link) {
+          const linkParts = version.link.split('/');
+          fileId = linkParts[linkParts.length - 1];
+        }
         
         let senderName = 'Nieznany';
-        let senderUserId = null;
-      
-        if (file.student && file.student.id) {
-          senderUserId = file.student.id;
-          console.log('Student from file:', file.student); 
-          console.log('Student properties:', Object.keys(file.student)); 
-          
-          if (file.student.fName && file.student.lName) {
-            senderName = `${file.student.fName} ${file.student.lName}`;
-            console.log('Got name from nested student:', senderName);
-          } else {
-            console.log('Looking up student with ID:', senderUserId, 'in students list');
-            const sender = allStudents.find(student => student.id === senderUserId);
-            console.log('Found sender in list:', sender);
-            
-            if (sender) {
-              console.log('Sender properties from list:', Object.keys(sender)); 
-              
-              if (sender.fName && sender.lName) {
-                senderName = `${sender.fName} ${sender.lName}`;
-              } else if (sender.fname && sender.lname) {
-                senderName = `${sender.fname} ${sender.lname}`;
-              } else if (sender.firstName && sender.lastName) {
-                senderName = `${sender.firstName} ${sender.lastName}`;
-              } else if (sender.f_name && sender.l_name) {
-                senderName = `${sender.f_name} ${sender.l_name}`;
-              }
-              console.log('Final name from lookup:', senderName);
-            } else {
-              console.log('No sender found with ID:', senderUserId);
-            }
+        const senderId = version.uploader_id; 
+        
+        if (senderId === this.userId) {
+          senderName = `${authStore.fname} ${authStore.lname}`;
+        } else {
+          const sender = allStudents.find(student => student.id === senderId);
+          if (sender) {
+            senderName = `${sender.fName || sender.fname || ''} ${sender.lName || sender.lname || ''}`.trim();
           }
         }
         
-        console.log('Final sender info:', { senderName, senderUserId });
+        const fileName = version.file_name || version.name || 'Brak nazwy';
+
+        console.log('Mapped file:', {
+          id: fileId,
+          name: fileName, 
+          uploadedAt: version.upload_time, 
+          senderName: senderName,
+          link: version.link
+        });
         
         return {
-          id: file.id,
-          name: file.name || 'Brak nazwy',
-          uploadedAt: file.date,
+          id: fileId,
+          name: fileName,
+          uploadedAt: version.upload_time, 
           senderName: senderName,
-          senderType: senderUserId === this.userId ? (this.isPromoter ? 'PROMOTER' : 'STUDENT') : 'OTHER',
+          link: version.link
         };
       });
     },
@@ -202,24 +242,44 @@ export default {
 
       const formData = new FormData();
       formData.append('file', file);
-
+      
       const uploaderId = authStore.userId;
+      const ownerId = this.isPromoter ? this.selectedStudentId : this.userId;
+      
+      if (!ownerId) {
+        throw new Error('No owner ID');
+      }
+      
       formData.append('uploaderId', uploaderId);
-      const targetStudentId = this.isPromoter ? this.selectedStudentId : uploaderId;
-      formData.append('targetStudentId', targetStudentId);
+      formData.append('ownerId', ownerId);
 
-      try {
-        await axios.post('/api/v1/files', formData);
-        this.uploadSuccess = true;
-        this.selectedFile = null;
-        this.$refs.fileInput.value = null;
-        this.isPromoter ? this.fetchStudentFiles() : this.fetchFiles();
+      console.log('Trying to upload:', {
+        fileName: file.name,
+        uploaderId: uploaderId,
+        ownerId: ownerId,
+        isPromoter: this.isPromoter
+      });
+
+        try {
+          await axios.post('/api/v1/files', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          this.uploadSuccess = true;
+          this.errorMessage = '';
+          this.selectedFile = null; 
+          this.$refs.fileInput.value = ''; 
+      
+          if (this.isPromoter) {
+              await this.fetchStudentFiles();
+          } else {
+              await this.fetchFiles();
+          }
       } catch (error) {
-        console.error('Błąd przy przesyłaniu pliku:', error);
-        this.errorMessage = 'Nie udało się przesłać pliku.';
+          console.error('Error uploading file:', error);
+          this.errorMessage = 'Nie udało się przesłać pliku.';
+          this.uploadSuccess = false;
       }
     },
-
 
     formatDate(dateString) {
       const date = new Date(dateString);
@@ -231,13 +291,22 @@ export default {
         minute: '2-digit',
       });
     },
+    
     previewFile(file) {
-      console.log('Previewing file with ID:', file.id);
-      window.open(`/api/v1/download/${file.id}`, '_blank');
+      console.log('Previewing file:', file);
+      if (file.link) {
+        window.open(file.link, '_blank');
+      } else if (file.id) {
+        window.open(`/api/v1/download/${file.id}`, '_blank');
+      } else {
+        this.errorMessage = 'Nie można otworzyć pliku - brak linku.';
+      }
     },
+    
     goToChecklist(studentId) {
       this.$router.push(`/checklist/${studentId}`);
     },
+    
     goToStudentChecklist() {
       if (!this.userId) {
         this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
@@ -262,7 +331,7 @@ export default {
   border-radius: 1rem;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
   padding: 2rem;
-  max-width: 800px;
+  max-width: 1000px;
   width: 100%;
   font-family: Arial, sans-serif;
 }
@@ -283,14 +352,77 @@ export default {
 .form-label {
   font-weight: bold;
   color: #333;
+  min-width: 120px;
 }
 
 .dropdown-content {
-  width: 100%;
+  flex: 1;
+  max-width: 300px;
   padding: 0.5rem;
   border-radius: 0.5rem;
   border: 1px solid #ccc;
   font-size: 1rem;
+}
+
+.upload-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+}
+
+.upload-section h3 {
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.file-input {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  width: 100%;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  border: none;
+  margin-top: 0.5rem;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.btn-primary:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.checklist-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.checklist-btn:hover {
+  background-color: #218838;
 }
 
 .table {
@@ -304,6 +436,7 @@ export default {
   padding: 0.75rem;
   text-align: left;
   border-bottom: 1px solid #dee2e6;
+  vertical-align: top;
 }
 
 .table th {
@@ -330,5 +463,22 @@ export default {
 
 .action-btn:hover {
   background-color: #0056b3;
+}
+
+.success-message {
+  color: #28a745;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.error-message {
+  color: #dc3545;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.checklist-section {
+  margin-bottom: 2rem;
+  text-align: center;
 }
 </style>

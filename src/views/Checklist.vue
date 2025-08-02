@@ -37,7 +37,9 @@ export default {
         },
     methods: {
 
-        async fetchCheckList() {
+        async fetchChecklist() {
+            this.loading = true;
+            this.errorMessage = '';
             try {
                 const response = await axios.get(`/api/v1/checklist/${this.studentId}`);
                 this.checklist = response.data;

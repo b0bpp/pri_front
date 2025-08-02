@@ -22,9 +22,10 @@ const routes = [
     props: true,
   },
   {
-    path: '/checklist',
+    path: '/checklist/:studentId',
     name: 'Checklist',
     component: Checklist,
+    props: true,
   },
 ]
 

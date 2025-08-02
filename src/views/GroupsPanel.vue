@@ -318,8 +318,6 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* Remove unused styles for status badges, students list, etc. */
-
 .action-btn {
   display: inline-flex;
   align-items: center;
