@@ -115,7 +115,7 @@ export default {
     async fetchStudents() {
       if (!this.isPromoter) return;
       try {
-        const response = await axios.get('/api/v1/student');
+        const response = await axios.get('/api/v1/students');
         this.students = response.data;
       } catch (error) {
         console.error('Błąd przy pobieraniu studentów:', error);
@@ -179,7 +179,7 @@ export default {
       
       let allStudents = [];
       try {
-        const studentsResponse = await axios.get('/api/v1/student');
+        const studentsResponse = await axios.get('/api/v1/students');
         allStudents = studentsResponse.data;
         console.log('All students from API:', allStudents);
       } catch (error) {

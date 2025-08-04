@@ -37,23 +37,31 @@ export default {
         },
     methods: {
 
-        async fetchChecklist() {
-            this.loading = true;
-            this.errorMessage = '';
+        async fetchChecklist() { 
             try {
-                const response = await axios.get(`/api/v1/checklist/${this.studentId}`);
+                const response = await axios.get(`/api/v1/view/note`, {
+                    params: { id: this.studentId }
+                });
                 this.checklist = response.data;
                 this.studentName = await this.getStudentName(this.studentId);
             } catch (error) {
                 console.error('Błąd przy pobieraniu checklisty:', error);
-                this.errorMessage = 'Nie udało się zapisać checklisty.';
+                this.errorMessage = 'Nie udało się pobrać checklisty.';
             }
         },
 
         async saveChecklist() {
             if (!this.isPromoter) return;
             try {
-                await axios.post(`/api/v1/checklist/${this.studentId}`, this.checklist.items);
+                const checklistDto = {
+                    studentId: this.studentId,
+                    uploadTime: new Date().toISOString(),
+                    isPassed: this.checklist.isPassed || false,
+                    models: this.checklist.items
+                };
+                await axios.post(`/api/v1/post/note`, checklistDto, {
+                    params: { checklistDto: checklistDto } 
+                });
                 this.errorMessage = '';
             } catch (error) {
                 console.error('Błąd przy zapisywaniu checklisty:', error);

@@ -133,7 +133,7 @@ export default {
       this.errorMessage = '';
       
       try {
-        const response = await axios.get('/api/v1/group');
+        const response = await axios.get('/api/v1/view/groups');
         this.groups = response.data;
       } catch (error) {
         console.error('Error fetching groups:', error);

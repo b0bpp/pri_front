@@ -32,7 +32,7 @@ export default {
     async loginAsStudent() {
       this.errorMessage = '';
       try {
-        const response = await axios.get('/api/v1/student');
+        const response = await axios.get('/api/v1/students');
         const students = response.data;
         const student = students.find(s => s.id === 2);
 
@@ -60,7 +60,7 @@ export default {
     async loginAsPromoter() {
       this.errorMessage = '';
       try {
-        const response = await axios.get('/api/v1/student');
+        const response = await axios.get('/api/v1/students');
         const students = response.data;
         const promoter = students.find(s => s.id === 5); 
 
