@@ -127,29 +127,71 @@ export default {
   async created() {
     await this.fetchGroups();
   },
-  methods: {
+   methods: {
     async fetchGroups() {
       this.loading = true;
       this.errorMessage = '';
       
       try {
-        const response = await axios.get('/api/v1/view/groups');
-        this.groups = response.data;
+        const response = await axios.get('/api/v1/view/groups/all');
+        
+        console.log('Groups API response:', response.data);
+        
+        if (response.data && Array.isArray(response.data.dtos)) {
+          this.groups = response.data.dtos;
+        } else if (response.data && Array.isArray(response.data)) {
+          this.groups = response.data;
+        } else {
+          console.warn('Unexpected response format:', response.data);
+          this.groups = [];
+        }
+        
+        console.log('Processed groups:', this.groups);
       } catch (error) {
         console.error('Error fetching groups:', error);
-        this.errorMessage = 'Nie udało się pobrać grup projektów.';
+        this.errorMessage = 'Nie udało się pobrać grup projektów: ' + (error.response?.data?.message || error.message);
         this.groups = [];
       } finally {
         this.loading = false;
       }
     },
+    
+    getSupervisorName(supervisor) {
+      if (!supervisor) return 'Nieprzypisany';
+      
+      const firstName = supervisor.fName || supervisor.fname || '';
+      const lastName = supervisor.lName || supervisor.lname || '';
+      
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      } else if (firstName || lastName) {
+        return firstName || lastName;
+      } else {
+        return 'Nieprzypisany';
+      }
+    },
+    
+    sortBy(field) {
+      if (this.sortField === field) {
+        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.sortField = field;
+        this.sortDirection = 'asc';
+      }
+    },
+    
+    getSortClass(field) {
+      if (this.sortField !== field) return '';
+      return this.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc';
+    },
+
     selectGroup(group) {
       console.log('Selected group:', group);
     },
     viewGroup(group) {
       this.$router.push({ 
         name: 'ChaptersPreview', 
-        params: { groupId: group.projectId },
+        params: { groupId: group.id },
         query: { groupName: group.name }
       });
     }
