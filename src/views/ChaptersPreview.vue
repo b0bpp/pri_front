@@ -48,7 +48,12 @@
             <td>{{ file.senderName || 'Nieznany' }}</td>
             <td>{{ file.name || 'Brak Nazwy' }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
-            <td><button class="action-btn" @click="previewFile(file)">Podgląd</button></td>
+            <td>
+              <button class="action-btn" @click="previewFile(file)">
+                <i class="icon-eye"></i>
+                Podgląd
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -481,4 +486,10 @@ export default {
   margin-bottom: 2rem;
   text-align: center;
 }
+
+.icon-eye::before {
+  content: "👁";
+  margin-right: 0.25rem;
+}
+
 </style>
