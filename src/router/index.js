@@ -3,6 +3,7 @@ import Home from '@/views/Home.vue'
 import GroupsPanel from '@/views/GroupsPanel.vue'
 import ChaptersPreview from '@/views/ChaptersPreview.vue'
 import Checklist from '@/views/Checklist.vue'
+import Thesis from '@/views/Thesis.vue' 
 
 const routes = [
   {
@@ -16,15 +17,21 @@ const routes = [
     component: GroupsPanel,
   },
   {
-    path: '/chapters-preview/:groupId',
+    path: '/chapters-preview/:id',
     name: 'ChaptersPreview',
     component: ChaptersPreview,
     props: true,
   },
   {
-    path: '/checklist/:studentId',
-    name: 'Checklist',
+    path: '/checklist/file/:fileId',
+    name: 'FileChecklist',
     component: Checklist,
+    props: true,
+  },
+  {
+    path: '/thesis/:groupId', 
+    name: 'Thesis',
+    component: Thesis,
     props: true,
   },
 ]

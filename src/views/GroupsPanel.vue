@@ -46,7 +46,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="group in filteredGroups" :key="group.projectId" class="group-row" @click="selectGroup(group)">
+          <tr v-for="group in filteredGroups" :key="group.id" class="group-row" @click="selectGroup(group)">
             <td class="group-name">
               <div class="name-cell">
                 <span class="project-name">{{ group.name }}</span>
@@ -191,8 +191,8 @@ export default {
     viewGroup(group) {
       this.$router.push({ 
         name: 'ChaptersPreview', 
-        params: { groupId: group.id },
-        query: { groupName: group.name }
+        params: { id: group.id },
+        query: { name: group.name }
       });
     }
   }

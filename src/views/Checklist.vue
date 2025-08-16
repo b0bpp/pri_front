@@ -1,15 +1,27 @@
 <template>
     <div class="wrapper">
         <div class="card">
-            <h2 class="title">Checklista dla {{ studentName }}</h2>
-            <div v-if="checklist.items && checklist.items.length > 0">
-                <div v-for="(item, index) in checklist.items" :key="index" class="checklist-item">
-                    <input type="checkbox" v-model="item.isCompleted" :disabled="!isPromoter" @change="updateChecklist"/>
-                    <span :class="{ 'completed': item.isCompleted }">{{ item.name }}</span>
+            <h2 class="title">Cheklista dla {{ studentName || 'Unknown' }}</h2>
+            <div v-if="checklist.models && checklist.models.length > 0">
+                <div v-for="(item, index) in checklist.models" :key="index" class="checklist-item">
+                    <input 
+                        type="checkbox" 
+                        v-model="item.passed"
+                        :disabled="!isPromoter"
+                        @change="updateChecklist"
+                    />
+                    <span :class="{ 'completed': item.passed }">
+                        {{ item.question }}
+                        <small v-if="item.is_critical">(Krytyczne)</small>
+                        <small>({{ item.points }} pkt)</small>
+                    </span>
                 </div>
-                <button v-if="isPromoter" class="save-btn" @click="saveChecklist">Zapisz</button>
+                <button v-if="isPromoter" class="save-btn" @click="saveChecklist">
+                    Zapisz
+                </button>
             </div>
-            <p v-else>Brak elementów na checliście.</p>
+            <p v-else>Brak pytań na checliście.</p>
+            
             <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
         </div>
     </div>
@@ -22,56 +34,65 @@ import authStore from '/src/stores/authStore';
 
 export default {
     name: 'Checklist',
+    props: ['fileId'],
     data() {
         return {
             isPromoter: authStore.isPromoter,
             studentId: null,
             studentName: '',
-            checklist: { items: [] },
+            checklist: { 
+                id: null,
+                passed: false,
+                models: [] 
+            },
             errorMessage: ''
         }
     },
     created() {
-        this.studentId = this.$route.params.studentId || '2';
         this.fetchChecklist();
         },
     methods: {
 
-        async fetchChecklist() { 
-            try {
-                const response = await axios.get(`/api/v1/view/note`, {
-                    params: { id: this.studentId }
-                });
-                this.checklist = response.data;
-                this.studentName = await this.getStudentName(this.studentId);
-            } catch (error) {
-                console.error('Błąd przy pobieraniu checklisty:', error);
-                this.errorMessage = 'Nie udało się pobrać checklisty.';
+        async fetchChecklist() {
+        console.log('fileId:', this.fileId);
+        try {
+            const response = await axios.get(`/api/v1/view/note`, {
+                params: { id: this.fileId }
+            });
+            console.log('Checklist response:', response.data);
+            this.checklist = response.data; 
+            
+            if(response.data.chapterVersion?.student) {
+                this.studentId = response.data.chapterVersion.student.id;
+                this.studentName = `${response.data.chapterVersion.student.fname} ${response.data.chapterVersion.student.lname}`;
             }
-        },
+        } catch (error) {
+            console.error('Błąd przy pobieraniu checklisty:', error);
+            this.errorMessage = 'Nie udało się pobrać checklisty.';
+        }
+    },
 
-        async saveChecklist() {
-            if (!this.isPromoter) return;
-            try {
-                const checklistDto = {
-                    studentId: this.studentId,
-                    uploadTime: new Date().toISOString(),
-                    isPassed: this.checklist.isPassed || false,
-                    models: this.checklist.items
-                };
-                await axios.post(`/api/v1/post/note`, checklistDto, {
-                    params: { checklistDto: checklistDto } 
-                });
-                this.errorMessage = '';
-            } catch (error) {
-                console.error('Błąd przy zapisywaniu checklisty:', error);
-                this.errorMessage = 'Nie udało się zapisać checklisty.';
-            }
-        },
+    async saveChecklist() {
+        if (!this.isPromoter) return;
+        try {
+            const checklistDto = {
+                id: this.checklist.id,
+                isPassed: this.checklist.isPassed,
+                checklistQuestionModels: this.checklist.checklistQuestionModels
+            };
+            await axios.post(`/api/v1/post/note`, null, {
+                params: { checklistDto: JSON.stringify(checklistDto) }
+            });
+            this.errorMessage = '';
+        } catch (error) {
+            console.error('Błąd przy zapisywaniu checklisty:', error);
+            this.errorMessage = 'Nie udało się zapisać checklisty.';
+        }
+    },
         
         async getStudentName(studentId) {
             try {
-                const response = await axios.get('/api/v1/student');
+                const response = await axios.get('/api/v1/students');
                 const student = response.data.find(s => s.id === parseInt(studentId));
                 return student ? `${student.fname} ${student.lname}` : 'Unknown';
             } catch (error) {

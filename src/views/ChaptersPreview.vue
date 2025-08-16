@@ -10,12 +10,6 @@
           <option disabled value="">-- wybierz --</option>
           <option v-for="student in students" :key="student.id" :value="student.id">{{ getStudentDisplayName(student) }}</option>
         </select>
-        <button v-if="selectedStudentId" class="checklist-btn" @click="goToChecklist(selectedStudentId)">Checklista</button>
-      </div>
-
-      <!-- Checklista dla studentów -->
-      <div v-else class="checklist-section">
-        <button class="checklist-btn" @click="goToStudentChecklist">Moja Checklista</button>
       </div>
 
       <!-- Upload plików -->
@@ -40,7 +34,7 @@
             <th>Wysłane przez</th>
             <th>Nazwa pliku</th>
             <th>Data przesłania</th>
-            <th>Akcja</th>
+            <th>Akcje</th>
           </tr>
         </thead>
         <tbody>
@@ -48,10 +42,14 @@
             <td>{{ file.senderName || 'Nieznany' }}</td>
             <td>{{ file.name || 'Brak Nazwy' }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
-            <td>
-              <button class="action-btn" @click="previewFile(file)">
+            <td class="actions-cell">
+              <button class="action-btn preview-btn" @click="previewFile(file)">
                 <i class="icon-eye"></i>
                 Podgląd
+              </button>
+              <button class="action-btn checklist-btn" @click="goToFileChecklist(file)">
+                <i class="icon-checklist"></i>
+                Checklista
               </button>
             </td>
           </tr>
@@ -194,25 +192,20 @@ export default {
       return versions.map((version) => {
         console.log('Processing version:', version);
         
-        let fileId = null;
+        let fileId = version.fileId || version.file_id;
+        let fileName = version.name || version.file_name || 'Brak Nazwy';
+
         if (version.link) {
           const linkParts = version.link.split('/');
           fileId = linkParts[linkParts.length - 1];
         }
         
         let senderName = 'Nieznany';
-        const senderId = version.uploader_id; 
-        
-        if (senderId === this.userId) {
-          senderName = `${authStore.fname} ${authStore.lname}`;
-        } else {
-          const sender = allStudents.find(student => student.id === senderId);
-          if (sender) {
-            senderName = `${sender.fName || sender.fname || ''} ${sender.lName || sender.lname || ''}`.trim();
-          }
+        if (version.userdataid) {
+          senderName = `${version.userdataid.fName || version.userdataid.fname || ''} ${version.userdataid.lName || version.userdataid.lname || ''}`.trim();
         }
         
-        const fileName = version.file_name || version.name || 'Brak nazwy';
+        const ownerId = version.owner?.id;
 
         console.log('Mapped file:', {
           id: fileId,
@@ -227,6 +220,7 @@ export default {
           name: fileName,
           uploadedAt: version.upload_time, 
           senderName: senderName,
+          ownerId: ownerId,
           link: version.link
         };
       });
@@ -241,50 +235,124 @@ export default {
     async uploadFile() {
       const file = this.selectedFile;
       if (!file) {
-        this.errorMessage = 'Nie wybrano pliku.';
-        return;
+          this.errorMessage = 'Nie wybrano pliku.';
+          return;
+      }
+
+      // Convert to numbers and validate - this is crucial!
+      let uploaderId, ownerId;
+      
+      try {
+          // Ensure we're working with actual numbers, not strings
+          uploaderId = Number(authStore.userId);
+          ownerId = this.isPromoter ? 
+              Number(this.selectedStudentId) : 
+              Number(authStore.userId);
+      } catch (error) {
+          this.errorMessage = 'Błąd konwersji ID użytkownika.';
+          return;
+      }
+
+      // Strict validation - make sure we have valid positive integers
+      if (!uploaderId || uploaderId <= 0 || !Number.isInteger(uploaderId)) {
+          this.errorMessage = 'Nieprawidłowe ID użytkownika przesyłającego.';
+          console.error('Invalid uploaderId:', authStore.userId, 'converted to:', uploaderId);
+          return;
+      }
+
+      if (!ownerId || ownerId <= 0 || !Number.isInteger(ownerId)) {
+          this.errorMessage = 'Nieprawidłowe ID właściciela pliku.';
+          console.error('Invalid ownerId:', this.selectedStudentId, 'converted to:', ownerId);
+          return;
+      }
+
+      // Additional validation for promoter
+      if (this.isPromoter && (!this.selectedStudentId || this.selectedStudentId === '')) {
+          this.errorMessage = 'Proszę wybrać studenta.';
+          return;
       }
 
       const formData = new FormData();
       formData.append('file', file);
-      
-      const uploaderId = authStore.userId;
-      const ownerId = this.isPromoter ? this.selectedStudentId : this.userId;
-      
-      if (!ownerId) {
-        throw new Error('No owner ID');
-      }
-      
-      formData.append('uploaderId', uploaderId);
-      formData.append('ownerId', ownerId);
 
-      console.log('Trying to upload:', {
-        fileName: file.name,
-        uploaderId: uploaderId,
-        ownerId: ownerId,
-        isPromoter: this.isPromoter
+      console.log('=== UPLOAD DEBUG INFO ===');
+      console.log('Original authStore.userId:', authStore.userId, typeof authStore.userId);
+      console.log('Original selectedStudentId:', this.selectedStudentId, typeof this.selectedStudentId);
+      console.log('Converted uploaderId:', uploaderId, typeof uploaderId);
+      console.log('Converted ownerId:', ownerId, typeof ownerId);
+      console.log('isPromoter:', this.isPromoter);
+      console.log('File details:', {
+          name: file.name,
+          size: file.size,
+          type: file.type
       });
 
-        try {
-          await axios.post('/api/v1/files', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' }
+      try {
+          const url = `/api/v1/files?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
+          console.log('Request URL:', url);
+          
+          const response = await axios.post(url, formData, {
+              headers: { 
+                  'Content-Type': 'multipart/form-data'
+              },
+              timeout: 30000 
           });
-          this.uploadSuccess = true;
-          this.errorMessage = '';
-          this.selectedFile = null; 
-          this.$refs.fileInput.value = ''; 
-      
-          if (this.isPromoter) {
-              await this.fetchStudentFiles();
+
+          console.log('Upload response:', response.data, response.status);
+        
+          if (response.status === 200 && response.data && response.data > 0) {
+              this.uploadSuccess = true;
+              this.errorMessage = '';
+              this.selectedFile = null;
+              if (this.$refs.fileInput) {
+                  this.$refs.fileInput.value = '';
+              }
+
+              if (this.isPromoter) {
+                  await this.fetchStudentFiles();
+              } else {
+                  await this.fetchFiles();
+              }
           } else {
-              await this.fetchFiles();
+              throw new Error(`Upload failed. Server returned: ${response.data}`);
           }
+          
       } catch (error) {
-          console.error('Error uploading file:', error);
-          this.errorMessage = 'Nie udało się przesłać pliku.';
+          console.error('Upload error details:', error);
+          
+          let errorMessage = 'Nie udało się przesłać pliku.';
+          
+          if (error.response) {
+              const status = error.response.status;
+              const data = error.response.data;
+              
+              if (status === 400) {
+                  errorMessage = 'Nieprawidłowe dane. Sprawdź czy wybrano właściwego studenta.';
+              } else if (status === 500) {
+                  errorMessage = 'Błąd serwera. Spróbuj ponownie później.';
+              } else {
+                  errorMessage = `Błąd serwera (${status}): ${data?.message || 'Nieznany błąd'}`;
+              }
+              
+              console.error('Server error:', {
+                  status: status,
+                  data: data,
+                  uploaderId: uploaderId,
+                  ownerId: ownerId
+              });
+              
+          } else if (error.request) {
+              errorMessage = 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.';
+          } else if (error.code === 'ECONNABORTED') {
+              errorMessage = 'Przekroczono limit czasu przesyłania. Spróbuj ponownie.';
+          } else {
+              errorMessage = `Błąd: ${error.message}`;
+          }
+          
+          this.errorMessage = errorMessage;
           this.uploadSuccess = false;
       }
-    },
+  },
 
     formatDate(dateString) {
       const date = new Date(dateString);
@@ -308,8 +376,8 @@ export default {
       }
     },
     
-    goToChecklist(studentId) {
-      this.$router.push(`/checklist/${studentId}`);
+    goToFileChecklist(file) {
+      this.$router.push({ name: 'FileChecklist', params: { fileId: file.id } });
     },
     
     goToStudentChecklist() {
@@ -414,22 +482,6 @@ export default {
   cursor: not-allowed;
 }
 
-.checklist-btn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
-}
-
-.checklist-btn:hover {
-  background-color: #218838;
-}
-
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -454,20 +506,37 @@ export default {
   background-color: #f8f9fa;
 }
 
+.actions-cell {
+  white-space: nowrap;
+}
+
 .action-btn {
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  background-color: #007bff;
-  color: white;
   border: none;
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   transition: background-color 0.2s ease-in-out;
+  margin-right: 0.5rem;
 }
 
-.action-btn:hover {
+.preview-btn {
+  background-color: #007bff;
+  color: white;
+}
+
+.preview-btn:hover {
   background-color: #0056b3;
+}
+
+.checklist-btn {
+  background-color: #28a745;
+  color: white;
+}
+
+.checklist-btn:hover {
+  background-color: #218838;
 }
 
 .success-message {
@@ -482,14 +551,13 @@ export default {
   font-weight: 600;
 }
 
-.checklist-section {
-  margin-bottom: 2rem;
-  text-align: center;
-}
-
 .icon-eye::before {
   content: "👁";
   margin-right: 0.25rem;
 }
 
+.icon-checklist::before {
+  content: "✓";
+  margin-right: 0.25rem;
+}
 </style>

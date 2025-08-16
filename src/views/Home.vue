@@ -34,7 +34,7 @@ export default {
       try {
         const response = await axios.get('/api/v1/students');
         const students = response.data;
-        const student = students.find(s => s.id === 2);
+        const student = students.find(s => s.id === 23);
 
         if (!student) {
           throw new Error('Student not found');
@@ -48,7 +48,7 @@ export default {
           throw new Error('Student name data is incomplete');
         }
 
-        authStore.setUser(false, 2, firstName, lastName);
+        authStore.setUser(false, 23, firstName, lastName);
         console.log('Student login successful:', authStore);
         this.router.push('/groups-panel');
       } catch (error) {
@@ -62,7 +62,7 @@ export default {
       try {
         const response = await axios.get('/api/v1/students');
         const students = response.data;
-        const promoter = students.find(s => s.id === 5); 
+        const promoter = students.find(s => s.id === 3); 
 
         if (!promoter) {
           throw new Error('Promoter not found');
@@ -76,7 +76,7 @@ export default {
           throw new Error('Promoter name data is incomplete');
         }
 
-        authStore.setUser(true, 5, firstName, lastName);
+        authStore.setUser(true, 3, firstName, lastName);
         console.log('Promoter login successful:', authStore);
         this.router.push('/groups-panel');
       } catch (error) {
