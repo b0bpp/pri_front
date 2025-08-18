@@ -46,14 +46,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="group in filteredGroups" :key="group.id" class="group-row" @click="selectGroup(group)">
+          <tr v-for="group in filteredGroups" :key="group.project_id" class="group-row" @click="selectGroup(group)">
             <td class="group-name">
               <div class="name-cell">
                 <span class="project-name">{{ group.name }}</span>
               </div>
             </td>
             <td class="supervisor-cell">
-              <span class="supervisor-name">{{ group.supervisor || 'Nieprzypisany' }}</span>
+              <span class="supervisor-name">{{ group.supervisor.lname || 'Nieprzypisany' }}</span>
             </td>
             <td class="actions-cell">
               <button class="action-btn primary" @click.stop="viewGroup(group)">
@@ -94,25 +94,29 @@ export default {
     supervisors() {
       const supervisors = new Set();
       this.groups.forEach(group => {
-        if (group.supervisor) supervisors.add(group.supervisor);
+        if (group.supervisor && group.supervisor.lname) {
+          supervisors.add(group.supervisor.lname);
+        }
       });
       return Array.from(supervisors).sort();
     },
     filteredGroups() {
-      let filtered = this.groups;
+      let filtered = this.groups.filter(group => !!group.project_id);
 
       // Wyszukiwanie
       if (this.searchTerm) {
         const term = this.searchTerm.toLowerCase();
         filtered = filtered.filter(group => 
           group.name.toLowerCase().includes(term) ||
-          (group.supervisor && group.supervisor.toLowerCase().includes(term))
+          (group.supervisor && group.supervisor.lname && group.supervisor.lname.toLowerCase().includes(term))
         );
       }
 
       // Promotor
       if (this.selectedSupervisor) {
-        filtered = filtered.filter(group => group.supervisor === this.selectedSupervisor);
+        filtered = filtered.filter(group => 
+          group.supervisor && group.supervisor.lname === this.selectedSupervisor
+        );
       }
 
       return filtered;
@@ -189,10 +193,17 @@ export default {
       console.log('Selected group:', group);
     },
     viewGroup(group) {
+      if (!group || !group.project_id) {
+        console.error('Cannot view group: Invalid project_id', group);
+        return;
+      }
+      
+      console.log('Navigating to group with project_id:', group.project_id);
+      
       this.$router.push({ 
         name: 'ChaptersPreview', 
-        params: { id: group.id },
-        query: { name: group.name }
+        params: { id: group.project_id.toString() }, // Use project_id as the id parameter
+        query: { name: group.name || 'Unknown Group' }
       });
     }
   }
