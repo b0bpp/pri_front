@@ -43,6 +43,8 @@
               Promotor
               <span class="sort-indicator" :class="getSortClass('supervisor')"></span>
             </th>
+            <th>Status pracy</th>
+            <th>Akcje</th>
           </tr>
         </thead>
         <tbody>
@@ -55,10 +57,15 @@
             <td class="supervisor-cell">
               <span class="supervisor-name">{{ group.supervisor.lname || 'Nieprzypisany' }}</span>
             </td>
+            <td class="status-cell">
+              <span class="status-badge" :class="getThesisStatusClass(group)">
+                {{ getThesisStatusText(group) }}
+              </span>
+            </td>
             <td class="actions-cell">
               <button class="action-btn primary" @click.stop="viewGroup(group)">
                 <i class="icon-eye"></i>
-                Podgląd
+                {{ isThesisAccepted(group) ? 'Rozdziały' : 'Praca magisterska' }}
               </button>
             </td>
           </tr>
@@ -141,22 +148,68 @@ export default {
         
         console.log('Groups API response:', response.data);
         
+        let processedGroups = [];
         if (response.data && Array.isArray(response.data.dtos)) {
-          this.groups = response.data.dtos;
+          processedGroups = response.data.dtos;
         } else if (response.data && Array.isArray(response.data)) {
-          this.groups = response.data;
+          processedGroups = response.data;
         } else {
           console.warn('Unexpected response format:', response.data);
-          this.groups = [];
+          processedGroups = [];
         }
         
-        console.log('Processed groups:', this.groups);
+        // Fetch thesis status for each group if needed
+        this.groups = await this.fetchThesisStatuses(processedGroups);
+        
+        console.log('Processed groups with thesis status:', this.groups);
       } catch (error) {
         console.error('Error fetching groups:', error);
         this.errorMessage = 'Nie udało się pobrać grup projektów: ' + (error.response?.data?.message || error.message);
         this.groups = [];
       } finally {
         this.loading = false;
+      }
+    },
+    
+    async fetchThesisStatuses(groups) {
+      try {
+        const groupsWithStatus = await Promise.all(groups.map(async (group) => {
+          if (group.thesis_status || group.isThesisAccepted || group.thesisAccepted) {
+            return group;
+          }
+          
+          if (!group.project_id) {
+            return group;
+          }
+          
+          try {
+            // BACKEND API ENDPOINT: GET /api/v1/thesis/status/{projectId}
+            // Expected response format:
+            // {
+            //   "status": "pending" | "submitted" | "accepted" | "rejected"
+            // }
+            const response = await axios.get(`/api/v1/thesis/status/${group.project_id}`);
+            
+            console.log(`Thesis status for group ${group.name}:`, response.data);
+            
+            return {
+              ...group,
+              thesis_status: response.data.status || 'pending'
+            };
+          } catch (error) {
+            console.warn(`Could not fetch thesis status for group ${group.name}:`, error);
+            return {
+              ...group,
+              thesis_status: 'pending',
+              thesis_error: true
+            };
+          }
+        }));
+        
+        return groupsWithStatus;
+      } catch (error) {
+        console.error('Error fetching thesis statuses:', error);
+        return groups; 
       }
     },
     
@@ -200,11 +253,78 @@ export default {
       
       console.log('Navigating to group with project_id:', group.project_id);
       
-      this.$router.push({ 
-        name: 'ChaptersPreview', 
-        params: { id: group.project_id.toString() }, // Use project_id as the id parameter
-        query: { name: group.name || 'Unknown Group' }
-      });
+      const isThesisAccepted = this.isThesisAccepted(group);
+      console.log('Is thesis accepted:', isThesisAccepted);
+      
+      if (isThesisAccepted) {
+        this.$router.push({ 
+          name: 'ChaptersPreview', 
+          params: { id: group.project_id.toString() },
+          query: { name: group.name || 'Unknown Group' }
+        });
+      } else {
+        this.$router.push({ 
+          name: 'Thesis', 
+          params: { groupId: group.project_id.toString() },
+          query: { name: group.name || 'Unknown Group' }
+        });
+      }
+    },
+    
+    isThesisAccepted(group) {
+      return group.thesis_status === 'accepted' || 
+             group.isThesisAccepted === true ||
+             group.thesisAccepted === true;
+    },
+    
+    getThesisStatusText(group) {
+      if (this.isThesisAccepted(group)) {
+        return 'Zaakceptowana';
+      } else if (group.thesis_status === 'rejected') {
+        return 'Odrzucona';
+      } else if (group.thesis_status === 'submitted') {
+        return 'Złożona';
+      } else {
+        return 'Oczekująca';
+      }
+    },
+    
+    getThesisStatusClass(group) {
+      if (this.isThesisAccepted(group)) {
+        return 'status-accepted';
+      } else if (group.thesis_status === 'rejected') {
+        return 'status-rejected';
+      } else if (group.thesis_status === 'submitted') {
+        return 'status-submitted';
+      } else {
+        return 'status-pending';
+      }
+    },
+  
+    async submitThesis(thesisData) {
+      try {
+        const response = await axios.post('/api/v1/thesis/submit', thesisData);
+        console.log('Thesis submitted successfully:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Error submitting thesis:', error);
+        throw error;
+      }
+    },
+
+    async updateThesisStatus(thesisId, projectId, newStatus) {
+      try {
+        const response = await axios.post('/api/v1/thesis/status/update', {
+          thesis_id: thesisId,
+          project_id: projectId,
+          status: newStatus
+        });
+        console.log('Thesis status updated successfully:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating thesis status:', error);
+        throw error;
+      }
     }
   }
 };
@@ -421,6 +541,38 @@ export default {
 .results-count {
   font-weight: 500;
   color: #374151;
+}
+
+.status-cell {
+  text-align: center;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-accepted {
+  background-color: #10b981;
+  color: white;
+}
+
+.status-rejected {
+  background-color: #ef4444;
+  color: white;
+}
+
+.status-submitted {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.status-pending {
+  background-color: #f59e0b;
+  color: white;
 }
 
 .error-message {

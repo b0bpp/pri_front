@@ -44,12 +44,13 @@
             <td>{{ formatDate(file.uploadedAt) }}</td>
             <td class="actions-cell">
               <button class="action-btn preview-btn" @click="previewFile(file)">
-                <i class="icon-eye"></i>
                 Podgląd
               </button>
               <button class="action-btn checklist-btn" @click="goToFileChecklist(file)">
-                <i class="icon-checklist"></i>
                 Checklista
+              </button>
+              <button class="action-btn comment-btn" @click="openCommentModal(file)">
+                Komentarz
               </button>
             </td>
           </tr>
@@ -60,6 +61,40 @@
       <p v-else-if="isPromoter && selectedStudentId">Brak przesłanych plików dla wybranego studenta.</p>
       <p v-else-if="!isPromoter">Brak przesłanych plików.</p>
       <p v-else>Wybierz studenta, aby zobaczyć pliki.</p>
+    </div>
+    
+    <!-- Modal dla komentarzy promotora -->
+    <div class="modal" v-if="showCommentModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Komentarz do pliku: {{ selectedFileForComment ? selectedFileForComment.name : '' }}</h3>
+          <button class="modal-close" @click="closeCommentModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <textarea 
+            class="comment-textarea" 
+            v-model="fileComment" 
+            :readonly="!isPromoter"
+            :placeholder="isPromoter ? 'Wpisz komentarz lub link do OneNote...' : 'Brak komentarza od promotora'"
+          ></textarea>
+          
+          <div v-if="isPromoter">
+            <p class="hint-text">Możesz dodać link do OneNote lub bezpośredni komentarz do pliku.</p>
+          </div>
+          
+          <div v-if="fileComment && fileComment.includes('http')">
+            <a :href="extractUrl(fileComment)" target="_blank" class="onenote-link">
+              Otwórz link do notatki
+            </a>
+          </div>
+          
+          <div class="modal-footer">
+            <p v-if="commentSuccess" class="success-message">Komentarz zapisany pomyślnie!</p>
+            <button v-if="isPromoter" class="btn btn-primary" @click="saveComment">Zapisz komentarz</button>
+            <button class="btn btn-secondary" @click="closeCommentModal">Zamknij</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -81,6 +116,11 @@ export default {
       uploadSuccess: false,
       errorMessage: '',
       userId: authStore.userId,
+      showCommentModal: false,
+      selectedFileForComment: null,
+      fileComment: '',
+      commentSuccess: false,
+      fileComments: {},  
     };
   },
   computed: {
@@ -387,6 +427,74 @@ export default {
       }
       this.$router.push(`/checklist/${this.userId}`);
     },
+    
+    async openCommentModal(file) {
+      this.selectedFileForComment = file;
+      this.showCommentModal = true;
+      await this.fetchFileComment(file.id);
+    },
+    
+    closeCommentModal() {
+      this.showCommentModal = false;
+      this.selectedFileForComment = null;
+    },
+    
+    async fetchFileComment(fileId) {
+      if (this.fileComments[fileId]) {
+        this.fileComment = this.fileComments[fileId];
+        return;
+      }
+      
+      try {
+        // BACKEND API ENDPOINT: GET /api/v1/file/comment/{fileId}
+        // Expected response format:
+        // {
+        //   "comment": "Text or link to OneNote"
+        // }
+        const response = await axios.get(`/api/v1/file/comment/${fileId}`);
+        this.fileComment = response.data.comment || '';
+        this.fileComments[fileId] = this.fileComment;
+      } catch (error) {
+        console.error('Błąd przy pobieraniu komentarza:', error);
+        this.fileComment = '';
+      }
+    },
+    
+    async saveComment() {
+      if (!this.selectedFileForComment || !this.selectedFileForComment.id) {
+        this.errorMessage = 'Brak ID pliku. Nie można zapisać komentarza.';
+        return;
+      }
+      
+      try {
+        // BACKEND API ENDPOINT: POST /api/v1/file/comment
+        // Request body:
+        // {
+        //   "file_id": 123,
+        //   "comment": "Text or link to OneNote"
+        // }
+        await axios.post('/api/v1/file/comment', {
+          file_id: this.selectedFileForComment.id,
+          comment: this.fileComment
+        });
+        
+        this.fileComments[this.selectedFileForComment.id] = this.fileComment;
+        this.commentSuccess = true;
+        setTimeout(() => {
+          this.commentSuccess = false;
+          this.closeCommentModal();
+        }, 1500);
+      } catch (error) {
+        console.error('Błąd przy zapisywaniu komentarza:', error);
+        this.errorMessage = 'Nie udało się zapisać komentarza.';
+      }
+    },
+    
+    extractUrl(text) {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const matches = text.match(urlRegex);
+      return matches ? matches[0] : '#';
+    },
   },
 };
 </script>
@@ -539,6 +647,15 @@ export default {
   background-color: #218838;
 }
 
+.comment-btn {
+  background-color: #6c757d;
+  color: white;
+}
+
+.comment-btn:hover {
+  background-color: #5a6268;
+}
+
 .success-message {
   color: #28a745;
   margin-top: 0.5rem;
@@ -551,13 +668,96 @@ export default {
   font-weight: 600;
 }
 
-.icon-eye::before {
-  content: "👁";
-  margin-right: 0.25rem;
+/* Modal styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
 
-.icon-checklist::before {
-  content: "✓";
-  margin-right: 0.25rem;
+.modal-content {
+  background-color: white;
+  border-radius: 0.5rem;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80%;
+  overflow-y: auto;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.modal-body {
+  padding: 1rem;
+}
+
+.modal-footer {
+  padding: 1rem;
+  border-top: 1px solid #dee2e6;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6c757d;
+}
+
+.comment-textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  margin-bottom: 1rem;
+  resize: vertical;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+.hint-text {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.onenote-link {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background-color: #7719aa;
+  color: white;
+  text-decoration: none;
+  border-radius: 0.25rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.onenote-link:hover {
+  background-color: #5f1487;
 }
 </style>
