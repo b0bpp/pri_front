@@ -253,6 +253,8 @@ export default {
           directUploader: version.uploader, 
           userdataid: version.userdataid,
           uploaderId: version.uploaderId,
+          uploaderFName: version.uploaderFName,
+          uploaderLName: version.uploaderLName,
           upload_time: version.upload_time,
           date: version.date
         });
@@ -263,6 +265,12 @@ export default {
         } else if (version.userdataid) {
           senderName = `${version.userdataid.fName || version.userdataid.fname || ''} ${version.userdataid.lName || version.userdataid.lname || ''}`.trim();
           uploaderId = version.userdataid.id;
+        } else if (version.uploaderFName && version.uploaderLName) {
+          senderName = `${version.uploaderFName} ${version.uploaderLName}`.trim();
+          uploaderId = version.uploaderId;
+        } else if (version.uploader_fname && version.uploader_lname) {
+          senderName = `${version.uploader_fname} ${version.uploader_lname}`.trim();
+          uploaderId = version.uploader_id || version.uploaderId;
         } else if (version.uploaderId) {
           uploaderId = version.uploaderId;
           const uploader = this.students.find(s => s.id === Number(uploaderId));

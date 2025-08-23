@@ -101,30 +101,34 @@ export default {
                 
                 console.log('Response structure:', JSON.stringify(response.data, null, 2));
                 
-                this.checklist = response.data;
-                
-                if (this.checklist.models && this.checklist.models.length > 0) {
-                    console.log(`Processing ${this.checklist.models.length} checklist items`);
+                if (response.data && Object.keys(response.data).length > 0) {
+                    this.checklist = response.data;
                     
-                    this.checklist.models.forEach(question => {
-                        question.checked = question.points > 0;
-                    });
+                    if (this.checklist.models && this.checklist.models.length > 0) {
+                        console.log(`Processing ${this.checklist.models.length} checklist items`);
+                        
+                        this.checklist.models.forEach(question => {
+                            question.checked = question.points > 0;
+                        });
+                        
+                        if (!this.checklist.checklistQuestionModels) {
+                            this.checklist.checklistQuestionModels = this.checklist.models;
+                        }
+                    } else {
+                        console.warn('No checklist models found in the response');
+                    }
                     
-                    if (!this.checklist.checklistQuestionModels) {
-                        this.checklist.checklistQuestionModels = this.checklist.models;
+                    if (response.data.chapterVersion?.student) {
+                        this.studentId = response.data.chapterVersion.student.id;
+                        this.studentName = `${response.data.chapterVersion.student.fname} ${response.data.chapterVersion.student.lname}`;
+                    } else if (response.data.studentInfo) {
+                        this.studentId = response.data.studentInfo.id;
+                        this.studentName = `${response.data.studentInfo.fname} ${response.data.studentInfo.lname}`;
+                    } else {
+                        console.warn('No student information found in the response');
                     }
                 } else {
-                    console.warn('No checklist models found in the response');
-                }
-                
-                if (response.data.chapterVersion?.student) {
-                    this.studentId = response.data.chapterVersion.student.id;
-                    this.studentName = `${response.data.chapterVersion.student.fname} ${response.data.chapterVersion.student.lname}`;
-                } else if (response.data.studentInfo) {
-                    this.studentId = response.data.studentInfo.id;
-                    this.studentName = `${response.data.studentInfo.fname} ${response.data.studentInfo.lname}`;
-                } else {
-                    console.warn('No student information found in the response');
+                    console.warn('Empty response data received');
                 }
                 
                 this.updateChecklistPassedStatus();
@@ -132,6 +136,23 @@ export default {
             } catch (error) {
                 console.error('Błąd przy pobieraniu checklisty:', error);
                 this.errorMessage = 'Nie udało się pobrać checklisty.';
+                setTimeout(async () => {
+                    try {
+                        const retryResponse = await axios.get(`/api/v1/view/note`, {
+                            params: { id: this.fileId }
+                        });
+                        if (retryResponse.data) {
+                            console.log('Successfully retrieved checklist on retry');
+                            this.errorMessage = '';
+                            this.checklist = retryResponse.data;
+                            this.updateChecklistPassedStatus();
+                        }
+                    } catch (retryError) {
+                        console.error('Retry also failed:', retryError);
+                    } finally {
+                        this.loading = false;
+                    }
+                }, 1000);
             } finally {
                 this.loading = false;
             }
@@ -180,6 +201,21 @@ export default {
             this.checklist.isPassed = !this.checklist.isPassed;
         },
 
+        createChecklistDto(items) {
+            return {
+                ...(this.checklist.id && { id: this.checklist.id }),
+                uploadTime: new Date(), 
+                isPassed: this.checklist.isPassed,
+                versionId: parseInt(this.fileId, 10), 
+                models: items.map(item => ({
+                    ...(item.id && { id: item.id }),
+                    question: item.question,
+                    points: item.checked || item.passed ? 1 : -1,
+                    isCritical: item.isCritical || item.is_critical || false
+                }))
+            };
+        },
+
         async saveChecklist() {
             if (!this.isPromoter) return;
             this.loading = true;
@@ -187,39 +223,82 @@ export default {
             this.successMessage = '';
             
             try {
+                try {
+                    await axios.get(`/api/v1/view/note`, {
+                        params: { id: this.fileId }
+                    });
+                    console.log('Successfully verified checklist exists');
+                } catch (fetchError) {
+                    console.error('Error ensuring checklist exists:', fetchError);
+                }
+                
                 const items = this.getChecklistItems();
-                const checklistDto = {
-                    versionId: this.fileId, 
-                    uploadTime: new Date().toISOString(), 
-                    models: items.map(item => ({
-                        id: item.id,
-                        question: item.question,
-                        points: item.checked || item.passed ? 1 : -1,
-                        isCritical: item.isCritical || item.is_critical || false
-                    })),
-                    isPassed: this.checklist.isPassed
+                const checklistDto = this.createChecklistDto(items);
+                
+                console.log('Saving checklist with structure:', JSON.stringify(checklistDto, null, 2));
+
+                const config = {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 };
                 
-                console.log('Saving checklist with exact structure from ChecklistService:', JSON.stringify(checklistDto, null, 2));
-                const response = await axios.post(`/api/v1/post/note`, null, {
-                    params: {
-                        checklistDto: JSON.stringify(checklistDto)
-                    }
-                });
-                
+                const response = await axios.post('/api/v1/post/note', checklistDto, config);
                 console.log('Save response:', response);
                 this.successMessage = 'Checklist została zapisana pomyślnie.';
                 setTimeout(() => {
                     this.successMessage = '';
                 }, 3000);
+                
                 await this.fetchChecklist();
             } catch (error) {
                 console.error('Błąd przy zapisywaniu checklisty:', error);
-                
+         
                 let errorMsg = 'Nie udało się zapisać checklisty';
                 if (error.response && error.response.status) {
                     errorMsg += ` (kod błędu: ${error.response.status})`;
+                    if (error.response.status === 500) {
+                        console.log('Server error occurred, attempting auto-recovery...');                     
+                        try {
+                            this.errorMessage = 'Próba odzyskania checklisty...';
+                            const recoveryResponse = await axios.get(`/api/v1/view/note`, {
+                                params: { id: this.fileId }
+                            });                            
+                            console.log('Recovery successful, trying to save again...');
+                            
+                            if (recoveryResponse.data && recoveryResponse.data.id) {
+                                this.checklist = recoveryResponse.data;
+                                if (this.checklist.models && this.checklist.models.length > 0) {
+                                    this.checklist.models.forEach(question => {
+                                        question.checked = question.points > 0;
+                                    });
+                                }
+                                const items = this.getChecklistItems();
+                                const recoveryDto = this.createChecklistDto(items);
+                                
+                                const recoveryConfig = {
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    }
+                                };
+                                
+                                await axios.post('/api/v1/post/note', recoveryDto, recoveryConfig);
+                                
+                                this.successMessage = 'Udało się odzyskać i zapisać checklistę.';
+                                setTimeout(() => {
+                                    this.successMessage = '';
+                                }, 3000);
+                                
+                                await this.fetchChecklist();
+                                return;
+                            }
+                        } catch (recoveryError) {
+                            console.error('Recovery attempt failed:', recoveryError);
+                            errorMsg += ': Próba odzyskania nie powiodła się';
+                        }
+                    }
                 }
+                
                 if (error.message) {
                     errorMsg += `: ${error.message}`;
                 }
