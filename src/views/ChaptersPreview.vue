@@ -12,7 +12,7 @@
         </select>
       </div>
 
-      <!-- Upload plików -->
+      <!-- Upload -->
       <div class="upload-section">
         <h3>Prześlij plik</h3>
         <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
@@ -220,14 +220,20 @@ export default {
     async mapFiles(versions) {
       console.log('Raw versions from API:', versions);
       
-      let allStudents = [];
-      try {
-        const studentsResponse = await axios.get('/api/v1/students');
-        allStudents = studentsResponse.data;
-        console.log('All students from API:', allStudents);
-      } catch (error) {
-        console.error('Error fetching all students:', error);
+      if (!versions || !Array.isArray(versions) || versions.length === 0) {
+        console.warn('No versions data received or empty array');
+        return [];
       }
+      
+      versions.forEach((version, index) => {
+        console.log(`Version ${index} data structure:`, JSON.stringify(version, null, 2));
+        
+        console.log(`Version ${index} uploader:`, version.uploader || version.userdataid || version.uploaderId || 'Not found');
+        
+        if (version.uploader) {
+          console.log(`Uploader details for version ${index}:`, version.uploader);
+        }
+      });
       
       return versions.map((version) => {
         console.log('Processing version:', version);
@@ -241,25 +247,53 @@ export default {
         }
         
         let senderName = 'Nieznany';
-        if (version.userdataid) {
+        let uploaderId = null;
+        
+        console.log('Uploader fields in version:', {
+          directUploader: version.uploader, 
+          userdataid: version.userdataid,
+          uploaderId: version.uploaderId,
+          upload_time: version.upload_time,
+          date: version.date
+        });
+        
+        if (version.uploader) {
+          senderName = `${version.uploader.fName || version.uploader.fname || ''} ${version.uploader.lName || version.uploader.lname || ''}`.trim();
+          uploaderId = version.uploader.id;
+        } else if (version.userdataid) {
           senderName = `${version.userdataid.fName || version.userdataid.fname || ''} ${version.userdataid.lName || version.userdataid.lname || ''}`.trim();
+          uploaderId = version.userdataid.id;
+        } else if (version.uploaderId) {
+          uploaderId = version.uploaderId;
+          const uploader = this.students.find(s => s.id === Number(uploaderId));
+          if (uploader) {
+            senderName = this.getStudentDisplayName(uploader);
+          }
         }
         
-        const ownerId = version.owner?.id;
+        if (senderName === 'Nieznany' && uploaderId) {
+          senderName = `Użytkownik ID: ${uploaderId}`;
+        }
+        
+        const ownerId = version.owner?.id || version.ownerId || version.owner_id;
+        const uploadDate = version.upload_time || version.uploadedAt || version.date || new Date().toISOString();
 
         console.log('Mapped file:', {
           id: fileId,
           name: fileName, 
-          uploadedAt: version.upload_time, 
+          uploadedAt: uploadDate, 
           senderName: senderName,
+          uploaderId: uploaderId,
+          ownerId: ownerId,
           link: version.link
         });
         
         return {
           id: fileId,
           name: fileName,
-          uploadedAt: version.upload_time, 
+          uploadedAt: uploadDate, 
           senderName: senderName,
+          uploaderId: uploaderId,
           ownerId: ownerId,
           link: version.link
         };
@@ -278,12 +312,9 @@ export default {
           this.errorMessage = 'Nie wybrano pliku.';
           return;
       }
-
-      // Convert to numbers and validate - this is crucial!
       let uploaderId, ownerId;
       
       try {
-          // Ensure we're working with actual numbers, not strings
           uploaderId = Number(authStore.userId);
           ownerId = this.isPromoter ? 
               Number(this.selectedStudentId) : 
@@ -293,7 +324,6 @@ export default {
           return;
       }
 
-      // Strict validation - make sure we have valid positive integers
       if (!uploaderId || uploaderId <= 0 || !Number.isInteger(uploaderId)) {
           this.errorMessage = 'Nieprawidłowe ID użytkownika przesyłającego.';
           console.error('Invalid uploaderId:', authStore.userId, 'converted to:', uploaderId);
@@ -306,7 +336,6 @@ export default {
           return;
       }
 
-      // Additional validation for promoter
       if (this.isPromoter && (!this.selectedStudentId || this.selectedStudentId === '')) {
           this.errorMessage = 'Proszę wybrać studenta.';
           return;
@@ -314,6 +343,9 @@ export default {
 
       const formData = new FormData();
       formData.append('file', file);
+      
+      formData.append('uploaderId', uploaderId.toString());
+      formData.append('ownerId', ownerId.toString());
 
       console.log('=== UPLOAD DEBUG INFO ===');
       console.log('Original authStore.userId:', authStore.userId, typeof authStore.userId);
@@ -330,6 +362,17 @@ export default {
       try {
           const url = `/api/v1/files?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
           console.log('Request URL:', url);
+          console.log('FormData contains:', {
+            file: file.name,
+            uploaderId: uploaderId.toString(),
+            ownerId: ownerId.toString()
+          });
+
+          console.log('AuthStore user info:', { 
+            userId: authStore.userId,
+            userName: authStore.userName,
+            isPromoter: authStore.isPromoter
+          });
           
           const response = await axios.post(url, formData, {
               headers: { 
@@ -446,13 +489,20 @@ export default {
       }
       
       try {
-        // BACKEND API ENDPOINT: GET /api/v1/file/comment/{fileId}
-        // Expected response format:
-        // {
-        //   "comment": "Text or link to OneNote"
-        // }
-        const response = await axios.get(`/api/v1/file/comment/${fileId}`);
-        this.fileComment = response.data.comment || '';
+        const response = await axios.get(`/api/v1/view/comments?versionId=${fileId}`);
+        console.log('Comment API response:', response.data);
+        
+        if (response.data && response.data.comments && response.data.comments.length > 0) {
+          const comments = response.data.comments;
+          const latestComment = comments.sort((a, b) => b.id - a.id)[0];
+         
+          this.fileComment = latestComment.text || '';
+          console.log('Latest comment found:', latestComment);
+        } else {
+          this.fileComment = '';
+          console.log('No comments found for file:', fileId);
+        }
+        
         this.fileComments[fileId] = this.fileComment;
       } catch (error) {
         console.error('Błąd przy pobieraniu komentarza:', error);
@@ -467,26 +517,96 @@ export default {
       }
       
       try {
-        // BACKEND API ENDPOINT: POST /api/v1/file/comment
-        // Request body:
-        // {
-        //   "file_id": 123,
-        //   "comment": "Text or link to OneNote"
-        // }
-        await axios.post('/api/v1/file/comment', {
-          file_id: this.selectedFileForComment.id,
-          comment: this.fileComment
-        });
+        let existingCommentId = null;
         
-        this.fileComments[this.selectedFileForComment.id] = this.fileComment;
-        this.commentSuccess = true;
-        setTimeout(() => {
-          this.commentSuccess = false;
-          this.closeCommentModal();
-        }, 1500);
+        try {
+          console.log('Checking for existing comments first...');
+          const existingCommentsResponse = await axios.get(`/api/v1/view/comments?versionId=${this.selectedFileForComment.id}`);
+          
+          if (existingCommentsResponse.data && 
+              existingCommentsResponse.data.comments && 
+              existingCommentsResponse.data.comments.length > 0) {
+            existingCommentId = existingCommentsResponse.data.comments[0].id;
+            console.log(`Found existing comment with ID: ${existingCommentId}`);
+          }
+        } catch (checkError) {
+          console.log('Error checking for existing comments:', checkError);
+        }
+      
+        if (existingCommentId) {
+          try {
+            console.log(`Updating existing comment ${existingCommentId} with text: ${this.fileComment}`);
+            const updateResponse = await axios.post(`/api/v1/update/comment`, { 
+              id: existingCommentId,
+              text: this.fileComment 
+            });
+            
+            if (updateResponse.status === 200) {
+              this.fileComments[this.selectedFileForComment.id] = this.fileComment;
+              this.commentSuccess = true;
+              console.log('Comment updated successfully');
+              setTimeout(() => {
+                this.commentSuccess = false;
+                this.closeCommentModal();
+              }, 1500);
+              
+              return;
+            }
+          } catch (updateError) {
+            console.error('Failed to update comment:', updateError);
+          }
+        }
+        
+        const commentDto = {
+          version_id: this.selectedFileForComment.id,
+          text: this.fileComment,
+          uploader: {
+            id: Number(authStore.userId)
+          },
+          version: {
+            id: this.selectedFileForComment.id
+          }
+        };
+        
+        console.log('Creating new comment:', commentDto);
+        
+        const response = await axios.post('/api/v1/post/comment', commentDto);
+        console.log('Save comment response:', response);
+        
+        if (response.status === 200 || response.status === 201) {
+          this.fileComments[this.selectedFileForComment.id] = this.fileComment;
+          this.commentSuccess = true;
+          console.log('Comment saved successfully');
+          setTimeout(() => {
+            this.commentSuccess = false;
+            this.closeCommentModal();
+          }, 1500);
+
+          await this.fetchFileComment(this.selectedFileForComment.id);
+        } else {
+          throw new Error(`Server returned unexpected status: ${response.status}`);
+        }
       } catch (error) {
         console.error('Błąd przy zapisywaniu komentarza:', error);
-        this.errorMessage = 'Nie udało się zapisać komentarza.';
+        
+        let errorMsg = 'Nie udało się zapisać komentarza.';
+        
+        if (error.response) {
+          const status = error.response.status;
+          console.error('Response error:', error.response.data);
+          
+          if (status === 400) {
+            errorMsg = 'Nieprawidłowy format danych komentarza.';
+          } else if (status === 500) {
+            if (typeof error.response.data === 'string' && error.response.data.includes('duplicate')) {
+              errorMsg = 'Ten komentarz już istnieje. Spróbuj zaktualizować istniejący komentarz.';
+            } else {
+              errorMsg = 'Błąd serwera przy zapisywaniu komentarza.';
+            }
+          }
+        }
+        
+        this.errorMessage = errorMsg;
       }
     },
     
@@ -494,6 +614,25 @@ export default {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const matches = text.match(urlRegex);
       return matches ? matches[0] : '#';
+    },
+
+    async deleteComment(commentId) {
+      try {
+        console.log('Attempting to delete comment ID:', commentId);
+        const response = await axios.get(`/api/v1/view/comment?id=${commentId}`);
+        console.log('Delete comment response:', response.data);
+        
+        if (response.data === true) {
+          await this.fetchFileComment(this.selectedFileForComment.id);
+          return true;
+        } else {
+          throw new Error('Failed to delete comment');
+        }
+      } catch (error) {
+        console.error('Błąd przy usuwaniu komentarza:', error);
+        this.errorMessage = `Nie udało się usunąć komentarza: ${error.message}`;
+        return false;
+      }
     },
   },
 };
