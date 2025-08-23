@@ -157,8 +157,6 @@ export default {
           console.warn('Unexpected response format:', response.data);
           processedGroups = [];
         }
-        
-        // Fetch thesis status for each group if needed
         this.groups = await this.fetchThesisStatuses(processedGroups);
         
         console.log('Processed groups with thesis status:', this.groups);
@@ -183,24 +181,19 @@ export default {
           }
           
           try {
-            // BACKEND API ENDPOINT: GET /api/v1/thesis/status/{projectId}
-            // Expected response format:
-            // {
-            //   "status": "pending" | "submitted" | "accepted" | "rejected"
-            // }
-            const response = await axios.get(`/api/v1/thesis/status/${group.project_id}`);
+            const response = await axios.get(`/api/v1/thesis/${group.project_id}`);
             
             console.log(`Thesis status for group ${group.name}:`, response.data);
             
             return {
               ...group,
-              thesis_status: response.data.status || 'pending'
+              thesis_status: response.data.status || 'PENDING'
             };
           } catch (error) {
             console.warn(`Could not fetch thesis status for group ${group.name}:`, error);
             return {
               ...group,
-              thesis_status: 'pending',
+              thesis_status: 'PENDING',
               thesis_error: true
             };
           }
@@ -272,7 +265,8 @@ export default {
     },
     
     isThesisAccepted(group) {
-      return group.thesis_status === 'accepted' || 
+      return group.thesis_status === 'APPROVED' || 
+             group.thesis_status === 'approved' ||
              group.isThesisAccepted === true ||
              group.thesisAccepted === true;
     },
@@ -280,9 +274,9 @@ export default {
     getThesisStatusText(group) {
       if (this.isThesisAccepted(group)) {
         return 'Zaakceptowana';
-      } else if (group.thesis_status === 'rejected') {
+      } else if (group.thesis_status === 'REJECTED' || group.thesis_status === 'rejected') {
         return 'Odrzucona';
-      } else if (group.thesis_status === 'submitted') {
+      } else if (group.thesis_status === 'SUBMITTED' || group.thesis_status === 'submitted') {
         return 'Złożona';
       } else {
         return 'Oczekująca';
@@ -292,9 +286,9 @@ export default {
     getThesisStatusClass(group) {
       if (this.isThesisAccepted(group)) {
         return 'status-accepted';
-      } else if (group.thesis_status === 'rejected') {
+      } else if (group.thesis_status === 'REJECTED' || group.thesis_status === 'rejected') {
         return 'status-rejected';
-      } else if (group.thesis_status === 'submitted') {
+      } else if (group.thesis_status === 'SUBMITTED' || group.thesis_status === 'submitted') {
         return 'status-submitted';
       } else {
         return 'status-pending';
