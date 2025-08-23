@@ -189,7 +189,7 @@ export default {
         }
         
         try {
-          const response = await axios.get(`/api/v1/thesis/${projectId}`);
+          const response = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
           console.log('Fetched thesis data:', response.data);
           
           this.thesis = {
