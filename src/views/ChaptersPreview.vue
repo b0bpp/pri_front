@@ -145,8 +145,6 @@ export default {
   created() {
     this.isPromoter = authStore.isPromoter;
     this.userId = authStore.userId;
-    
-    // Get project ID from route params
     this.projectId = this.$route.params.id;
     this.groupName = this.$route.query.name || 'Grupa projektowa';
     
@@ -542,7 +540,9 @@ export default {
     async openCommentModal(file) {
       this.selectedFileForComment = file;
       this.showCommentModal = true;
-      await this.fetchFileComment(file.id);
+      const versionId = file.chapterVersionId || file.id;
+      console.log(`Opening comment modal for version ID: ${versionId}`);
+      await this.fetchFileComment(versionId);
     },
     
     closeCommentModal() {
@@ -550,14 +550,16 @@ export default {
       this.selectedFileForComment = null;
     },
     
-    async fetchFileComment(fileId) {
-      if (this.fileComments[fileId]) {
-        this.fileComment = this.fileComments[fileId];
+    async fetchFileComment(versionId) {
+      console.log(`Fetching comments for version ID: ${versionId}`);
+      
+      if (this.fileComments[versionId]) {
+        this.fileComment = this.fileComments[versionId];
         return;
       }
       
       try {
-        const response = await axios.get(`/api/v1/view/comments?versionId=${fileId}`);
+        const response = await axios.get(`/api/v1/view/comments?versionId=${versionId}`);
         console.log('Comment API response:', response.data);
         
         if (response.data && response.data.comments && response.data.comments.length > 0) {
@@ -568,10 +570,10 @@ export default {
           console.log('Latest comment found:', latestComment);
         } else {
           this.fileComment = '';
-          console.log('No comments found for file:', fileId);
+          console.log('No comments found for version:', versionId);
         }
         
-        this.fileComments[fileId] = this.fileComment;
+        this.fileComments[versionId] = this.fileComment;
       } catch (error) {
         console.error('Błąd przy pobieraniu komentarza:', error);
         this.fileComment = '';
@@ -579,8 +581,14 @@ export default {
     },
     
     async saveComment() {
-      if (!this.selectedFileForComment || !this.selectedFileForComment.id) {
-        this.errorMessage = 'Brak ID pliku. Nie można zapisać komentarza.';
+      if (!this.selectedFileForComment) {
+        this.errorMessage = 'Brak pliku. Nie można zapisać komentarza.';
+        return;
+      }
+      
+      const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+      if (!versionId) {
+        this.errorMessage = 'Brak ID wersji pliku. Nie można zapisać komentarza.';
         return;
       }
       
@@ -589,7 +597,8 @@ export default {
         
         try {
           console.log('Checking for existing comments first...');
-          const existingCommentsResponse = await axios.get(`/api/v1/view/comments?versionId=${this.selectedFileForComment.id}`);
+          const versionIdForCheck = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+          const existingCommentsResponse = await axios.get(`/api/v1/view/comments?versionId=${versionIdForCheck}`);
           
           if (existingCommentsResponse.data && 
               existingCommentsResponse.data.comments && 
@@ -610,7 +619,8 @@ export default {
             });
             
             if (updateResponse.status === 200) {
-              this.fileComments[this.selectedFileForComment.id] = this.fileComment;
+              const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+              this.fileComments[versionId] = this.fileComment;
               this.commentSuccess = true;
               console.log('Comment updated successfully');
               setTimeout(() => {
@@ -624,12 +634,24 @@ export default {
             console.error('Failed to update comment:', updateError);
           }
         }
-        
+
         const commentDto = {
-          version: parseInt(this.selectedFileForComment.id),
           text: this.fileComment,
-          uploader: parseInt(authStore.userId)
+          uploader_id: parseInt(authStore.userId),
+          version_id: parseInt(this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id),
+          fname: authStore.fname || "",
+          lname: authStore.lname || ""
         };
+        
+        console.log('Current auth store state:', {
+          userId: authStore.userId,
+          fname: authStore.fname,
+          lname: authStore.lname
+        });
+
+        if (existingCommentId) {
+          commentDto.id = parseInt(existingCommentId);
+        }
         
         console.log('Creating new comment:', commentDto);
         
@@ -637,7 +659,8 @@ export default {
         console.log('Save comment response:', response);
         
         if (response.status === 200 || response.status === 201) {
-          this.fileComments[this.selectedFileForComment.id] = this.fileComment;
+          const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+          this.fileComments[versionId] = this.fileComment;
           this.commentSuccess = true;
           console.log('Comment saved successfully');
           setTimeout(() => {
@@ -645,7 +668,8 @@ export default {
             this.closeCommentModal();
           }, 1500);
 
-          await this.fetchFileComment(this.selectedFileForComment.id);
+          const versionIdForFetch = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+          await this.fetchFileComment(versionIdForFetch);
         } else {
           throw new Error(`Server returned unexpected status: ${response.status}`);
         }
@@ -686,7 +710,8 @@ export default {
         console.log('Delete comment response:', response.data);
         
         if (response.data === true) {
-          await this.fetchFileComment(this.selectedFileForComment.id);
+          const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
+          await this.fetchFileComment(versionId);
           return true;
         } else {
           throw new Error('Failed to delete comment');
