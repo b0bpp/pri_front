@@ -50,7 +50,7 @@
       <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz zmiany</button>
       <button v-if="canEditComment && !thesisAccepted" type="button" class="btn btn-primary" @click="savePromoterComment">Zapisz komentarz promotora</button>
       <button
-        v-if="isPromoter && !thesisAccepted && thesis.approval_status === 'submitted' && allChaptersAccepted"
+        v-if="isPromoter && !thesisAccepted && allChaptersAccepted"
         type="button"
         class="btn btn-success"
         @click="acceptThesis"
@@ -59,7 +59,7 @@
       </button>
       <p v-if="thesisAccepted" class="accepted-message">Praca została zaakceptowana i nie można jej już edytować.</p>
       <p v-if="thesis.approval_status === 'rejected'" class="rejected-message">Praca została odrzucona. Możesz wprowadzić zmiany i ponownie ją zgłosić.</p>
-      <p v-if="isPromoter && !allChaptersAccepted && thesis.approval_status === 'submitted'" class="warning-message">
+      <p v-if="isPromoter && !allChaptersAccepted" class="warning-message">
         Nie wszystkie rozdziały zostały zaakceptowane. Zanim będzie można zaakceptować pracę, należy zaakceptować rozdziały wszystkich członków grupy.
       </p>
     </form>
@@ -118,8 +118,8 @@
         <div class="modal-header">
           <h3>{{ editingOwnChapter ? 'Twój rozdział' : 'Rozdział studenta' }}</h3>
           <div class="modal-actions">
-            <button v-if="isPromoter && selectedChapterId" class="btn btn-primary save-comment-btn" @click="saveChapterComment">
-              Zapisz komentarz
+            <button v-if="isPromoter && selectedChapterId" class="btn btn-success" @click="acceptChapter">
+              Akceptuj
             </button>
             <button class="modal-close" @click="closeChapterModal">&times;</button>
           </div>
@@ -393,7 +393,7 @@ export default {
         console.log('Thesis approval response:', response.data);
         
         this.thesisAccepted = true;
-        this.thesis.approval_status = 'approved';
+        this.thesis.approval_status = 'APPROVED';
         
         this.successMessage = 'Praca została zaakceptowana.';
         this.errorMessage = '';
@@ -405,7 +405,6 @@ export default {
       setTimeout(() => (this.successMessage = ''), 2000);
     },
 
-    //No endpoint for rejecting yet
     async rejectThesis() {
       this.errorMessage = 'Funkcja odrzucania pracy jest obecnie niedostępna.';
       setTimeout(() => (this.errorMessage = ''), 3000);
@@ -557,6 +556,12 @@ export default {
     saveChapterComment() {
       if (this.$refs.chapterComponent) {
         this.$refs.chapterComponent.savePromoterComment();
+      }
+    },
+    
+    acceptChapter() {
+      if (this.$refs.chapterComponent) {
+        this.$refs.chapterComponent.acceptChapter();
       }
     }
   }

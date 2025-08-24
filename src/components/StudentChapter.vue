@@ -15,7 +15,7 @@
         <label for="titleEng">Tytuł rozdziału ENG</label>
         <input
           id="titleEng"
-          v-model="chapter.titleEng"
+          v-model="chapter.title_en"
           :readonly="isPromoter || chapterAccepted"
           class="form-control"
           required
@@ -35,7 +35,7 @@
         <label for="descriptionEng">Opis rozdziału ENG</label>
         <textarea
           id="descriptionEng"
-          v-model="chapter.descriptionEng"
+          v-model="chapter.description_en"
           :readonly="isPromoter || chapterAccepted"
           class="form-control"
           required
@@ -45,27 +45,23 @@
         <label for="promoterComment">Komentarz promotora do rozdziału</label>
         <textarea
           id="promoterComment"
-          v-model="chapter.promoterComment"
+          v-model="chapter.supervisor_comment"
           :readonly="!isPromoter || chapterAccepted"
           class="form-control"
         ></textarea>
       </div>
-      <button v-if="canEdit && !chapterAccepted" type="submit" class="btn btn-primary">Zapisz</button>
-      <button
-        v-if="isPromoter && !chapterAccepted && chapter.status === 'submitted'"
+      <button v-if="canEdit && !chapterAccepted" type="submit" class="btn btn-primary">Zapisz rozdział</button>
+      <button 
+        v-if="isPromoter && !chapterAccepted"
         type="button"
-        class="btn btn-success"
-        @click="acceptChapter"
+        class="btn btn-primary save-comment-btn"
+        @click="savePromoterComment"
       >
-        Akceptuj
+        Zapisz komentarz promotora
       </button>
-      <!-- Note: Reject button is removed as there's no backend endpoint for it -->
       <p v-if="chapterAccepted" class="accepted-message">
         Rozdział został zaakceptowany i nie można go już edytować.
-      </p>
-      <p v-if="chapter.status === 'rejected'" class="rejected-message">
-        Rozdział został odrzucony. Możesz wprowadzić zmiany i ponownie go zgłosić.
-      </p>
+      </p>    
     </form>
     <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
@@ -89,16 +85,14 @@ export default {
       isPromoter: authStore.isPromoter,
       canEdit: !authStore.isPromoter || false,
       userId: authStore.userId,
-      // We'll use this to store the project ID internally
       internalGroupId: null,
-      // Chapter data structure
       chapter: {
         title: '',
-        titleEng: '',
+        title_en: '',
         description: '',
-        descriptionEng: '',
-        promoterComment: '',
-        status: 'pending',
+        description_en: '',
+        supervisor_comment: '',
+        approval_status: 'false',
         user_id: null
       },
       chapterId: null,
@@ -108,7 +102,6 @@ export default {
     };
   },
   watch: {
-    // Watch for changes in the groupId prop and update our internal copy
     groupId: {
       immediate: true,
       handler(newVal) {
@@ -118,20 +111,6 @@ export default {
     }
   },
   methods: {
-    // Loads a chapter by ID
-    // BACKEND API ENDPOINT: GET /api/v1/chapter/{id}
-    // Expected response format based on ChapterCoreDto:
-    // {
-    //   "id": 123,
-    //   "userId": 789,
-    //   "projectId": 456,
-    //   "title": "Tytuł rozdziału",
-    //   "titleEng": "Chapter Title",
-    //   "description": "Opis rozdziału",
-    //   "descriptionEng": "Chapter Description",
-    //   "promoterComment": "Komentarz promotora",
-    //   "status": "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED"
-    // }
     async loadChapter(chapterId) {
       if (!chapterId) {
         this.errorMessage = 'Brak identyfikatora rozdziału.';
@@ -145,15 +124,18 @@ export default {
         this.chapter = {
           ...response.data,
           title: response.data.title || '',
-          titleEng: response.data.titleEng || '',
+          title_en: response.data.title_en || '',
           description: response.data.description || '',
-          descriptionEng: response.data.descriptionEng || '',
-          promoterComment: response.data.promoterComment || '',
-          user_id: response.data.userId,
-          status: response.data.status?.toLowerCase() || 'pending'
+          description_en: response.data.description_en || '',
+          supervisor_comment: response.data.supervisor_comment || '',
+          user_id: response.data.userId || response.data.user_id || response.data.user_data_id,
+          approval_status: response.data.approval_status || 'false'
         };
         
-        this.chapterAccepted = response.data.status === 'APPROVED' || response.data.status === 'approved';
+        this.chapterAccepted = 
+          response.data.approval_status === 'APPROVED' || 
+          response.data.approval_status === 'true' || 
+          response.data.approval_status === true;
         this.chapterId = response.data.id;
         
         this.successMessage = '';
@@ -164,17 +146,16 @@ export default {
       }
     },
     
-    // Creates a new chapter for the user
     createNewChapter(userId) {
       console.log('Creating new chapter with groupId:', this.groupId, 'and userId:', userId);
       
       this.chapter = {
         title: '',
-        titleEng: '',
+        title_en: '',
         description: '',
-        descriptionEng: '',
-        promoterComment: '',
-        status: 'pending',
+        description_en: '',
+        supervisor_comment: '',
+        approval_status: 'false',
         user_id: userId
       };
       this.chapterId = null;
@@ -183,7 +164,6 @@ export default {
       this.errorMessage = '';
     },
     
-    // Method to set the groupId externally
     setGroupId(id) {
       if (id) {
         this.internalGroupId = id;
@@ -191,40 +171,22 @@ export default {
       }
     },
     
-    // Saves or updates the chapter
-    // BACKEND API ENDPOINT: 
-    // For new chapters: POST /api/v1/chapter
-    // For existing chapters: PATCH /api/v1/chapter/{id}
-    // Request body based on ChapterCoreDto:
-    // {
-    //   "userId": 789,
-    //   "projectId": 456,
-    //   "title": "Tytuł rozdziału",
-    //   "titleEng": "Chapter Title",
-    //   "description": "Opis rozdziału",
-    //   "descriptionEng": "Chapter Description",
-    //   "promoterComment": "Komentarz promotora"
-    // }
     async saveChapter() {
       if (this.chapterAccepted) return;
       
       try {
-        // First try internal value, then direct groupId prop, then route params, then $parent if available
         let projectId = this.internalGroupId;
         
-        // If internal value is missing, try the prop
         if (!projectId) {
           projectId = this.groupId;
           console.log('Using projectId from prop:', projectId);
         }
-        
-        // If still missing, try to get from route params
+
         if (!projectId && this.$route && this.$route.params) {
           projectId = this.$route.params.groupId;
           console.log('Using projectId from route params:', projectId);
         }
         
-        // If still missing, try to get from parent component
         if (!projectId && this.$parent && this.$parent.projectId) {
           projectId = this.$parent.projectId;
           console.log('Using projectId from parent component:', projectId);
@@ -240,23 +202,21 @@ export default {
         }
         
         const chapterData = {
-          userId: this.chapter.user_id || this.userId,
-          projectId: parseInt(projectId),
+          user_id: this.chapter.user_id || this.userId,
+          project_id: parseInt(projectId),
           title: this.chapter.title,
-          titleEng: this.chapter.titleEng,
+          title_en: this.chapter.title_en,
           description: this.chapter.description,
-          descriptionEng: this.chapter.descriptionEng,
-          promoterComment: this.chapter.promoterComment
+          description_en: this.chapter.description_en,
+          supervisor_comment: this.chapter.supervisor_comment
         };
         
         console.log('Saving chapter data:', chapterData);
         
         let response;
         if (this.chapterId) {
-          // Update existing chapter - don't include the ID in the request body
           response = await axios.patch(`/api/v1/chapter/${this.chapterId}`, chapterData);
         } else {
-          // Create new chapter
           response = await axios.post('/api/v1/chapter', chapterData);
         }
         
@@ -264,7 +224,11 @@ export default {
         
         if (response.data && response.data.id) {
           this.chapterId = response.data.id;
-          this.chapter.status = response.data.status?.toLowerCase() || 'submitted';
+          this.chapter.approval_status = response.data.approval_status || 'false';          
+          this.chapterAccepted = 
+            this.chapter.approval_status === 'APPROVED' || 
+            this.chapter.approval_status === 'true' || 
+            this.chapter.approval_status === true;
         }
         
         this.successMessage = 'Rozdział został zapisany.';
@@ -274,7 +238,6 @@ export default {
         if (error.response && error.response.data) {
           console.error('Response data:', error.response.data);
           
-          // Provide more detailed error message if possible
           if (typeof error.response.data === 'string') {
             this.errorMessage = `Nie udało się zapisać rozdziału: ${error.response.data}`;
           } else {
@@ -287,9 +250,6 @@ export default {
       setTimeout(() => (this.successMessage = ''), 2000);
     },
     
-    // Accepts a chapter (promoter only)
-    // BACKEND API ENDPOINT: POST /api/v1/chapter/{id}/confirm
-    // No request body needed
     async acceptChapter() {
       try {
         if (!this.chapterId) {
@@ -298,12 +258,47 @@ export default {
         }
         
         console.log('Approving chapter with ID:', this.chapterId);
+        let currentServerData;
+        try {
+          const chapterResponse = await axios.get(`/api/v1/chapter/${this.chapterId}`);
+          currentServerData = chapterResponse.data;
+          console.log('Current chapter data from server:', currentServerData);
+        } catch (fetchError) {
+          console.error('Error fetching current chapter data:', fetchError);
+          this.errorMessage = 'Nie udało się pobrać aktualnych danych rozdziału.';
+          return;
+        }
         
-        const response = await axios.post(`/api/v1/chapter/${this.chapterId}/confirm`);
+        try {
+          const approvalResponse = await axios.post(`/api/v1/chapter/${this.chapterId}/approve`);
+          console.log('Chapter approval direct response:', approvalResponse.data);
+          this.chapterAccepted = true;
+          this.chapter.approval_status = 'true';
+          this.successMessage = 'Rozdział został zaakceptowany.';
+          
+          return; 
+        } catch (approvalError) {
+          console.log('Direct approval endpoint not available, falling back to PATCH:', approvalError);
+        }
+
+        const approvalData = {
+          approval_status: 'APPROVED', 
+          title: currentServerData.title,
+          title_en: currentServerData.title_en,
+          description: currentServerData.description,
+          description_en: currentServerData.description_en,
+          supervisor_comment: currentServerData.supervisor_comment,
+          user_id: currentServerData.user_data_id || currentServerData.user_id,
+          project_id: currentServerData.project_id
+        };
+
+        const response = await axios.patch(`/api/v1/chapter/${this.chapterId}`, approvalData);
         console.log('Chapter approval response:', response.data);
         
-        this.chapterAccepted = true;
-        this.chapter.status = 'approved';
+        if (response.data) {
+          this.chapterAccepted = true;
+          this.chapter.approval_status = 'APPROVED';
+        }
         
         this.successMessage = 'Rozdział został zaakceptowany.';
         this.errorMessage = '';
@@ -313,17 +308,51 @@ export default {
       }
       setTimeout(() => (this.successMessage = ''), 2000);
     },
-    
-    // This method is for rejecting a chapter
-    // NOTE: Currently, the backend does not have an endpoint for rejecting a chapter.
-    // We could either create a custom endpoint or remove this functionality.
-    
     async rejectChapter() {
       this.errorMessage = 'Funkcja odrzucania rozdziału jest obecnie niedostępna.';
       setTimeout(() => (this.errorMessage = ''), 3000);
-      
-      // This method should be implemented once the backend provides an endpoint
-      // for rejecting a chapter.
+    },
+    
+    async savePromoterComment() {
+      try {
+        if (!this.chapterId) {
+          this.errorMessage = 'Brak identyfikatora rozdziału. Najpierw zapisz rozdział.';
+          return;
+        }
+
+        let currentServerData;
+        try {
+          const chapterResponse = await axios.get(`/api/v1/chapter/${this.chapterId}`);
+          currentServerData = chapterResponse.data;
+          console.log('Current chapter data from server:', currentServerData);
+        } catch (fetchError) {
+          console.error('Error fetching current chapter data:', fetchError);
+          this.errorMessage = 'Nie udało się pobrać aktualnych danych rozdziału. Komentarz może nie zostać prawidłowo zapisany.';
+          return;
+        }
+
+        const updatedChapterData = {
+          user_id: currentServerData.user_id || this.chapter.user_id || this.userId,
+          project_id: parseInt(this.internalGroupId || this.groupId),
+          title: currentServerData.title || this.chapter.title,
+          title_en: currentServerData.title_en || this.chapter.title_en, 
+          description: currentServerData.description || this.chapter.description,
+          description_en: currentServerData.description_en || this.chapter.description_en,
+          supervisor_comment: this.chapter.supervisor_comment,
+          approval_status: currentServerData.approval_status || this.chapter.approval_status
+        };
+        
+        console.log('Saving chapter with updated promoter comment:', updatedChapterData);
+        const response = await axios.patch(`/api/v1/chapter/${this.chapterId}`, updatedChapterData);
+        console.log('Comment saved response:', response.data);
+        
+        this.successMessage = 'Komentarz promotora został zapisany.';
+        this.errorMessage = '';
+      } catch (error) {
+        console.error('Błąd przy zapisywaniu komentarza promotora:', error);
+        this.errorMessage = 'Nie udało się zapisać komentarza promotora.';
+      }
+      setTimeout(() => (this.successMessage = ''), 2000);
     }
   }
 };

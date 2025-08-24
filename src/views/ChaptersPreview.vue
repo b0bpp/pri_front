@@ -1,11 +1,11 @@
 <template>
   <div class="wrapper">
     <div class="card">
-      <h2 class="title">Przegląd rozdziałów</h2>
+      <h2 class="title">Przegląd rozdziałów - {{ groupName }}</h2>
 
       <!-- Dropdown: Lista studentów dla promotora -->
       <div class="student-selector" v-if="isPromoter">
-        <strong class="form-label">Wybierz studenta:</strong>
+        <strong class="form-label">Student z grupy {{ groupName }}:</strong>
         <select v-model="selectedStudentId" class="dropdown-content" @change="fetchStudentFiles">
           <option disabled value="">-- wybierz --</option>
           <option v-for="student in students" :key="student.id" :value="student.id">{{ getStudentDisplayName(student) }}</option>
@@ -120,7 +120,9 @@ export default {
       selectedFileForComment: null,
       fileComment: '',
       commentSuccess: false,
-      fileComments: {},  
+      fileComments: {},
+      projectId: null,
+      groupName: ''
     };
   },
   computed: {
@@ -128,15 +130,39 @@ export default {
       return this.isPromoter ? this.studentFiles : this.files;
     }
   },
+  watch: {
+    students: {
+      immediate: true,
+      handler(newStudents) {
+        if (this.isPromoter && newStudents && newStudents.length === 1) {
+          console.log('Auto-selecting the only student in group:', newStudents[0].id);
+          this.selectedStudentId = newStudents[0].id;
+          this.fetchStudentFiles();
+        }
+      }
+    }
+  },
   created() {
     this.isPromoter = authStore.isPromoter;
     this.userId = authStore.userId;
+    
+    // Get project ID from route params
+    this.projectId = this.$route.params.id;
+    this.groupName = this.$route.query.name || 'Grupa projektowa';
+    
+    console.log('ChaptersPreview initialized with projectId:', this.projectId, 'Group name:', this.groupName);
+    
     if (this.userId) {
       this.fetchFiles();
     } else {
       this.errorMessage = 'Brak zalogowanego użytkownika. Proszę zalogować się ponownie.';
     }
-    this.fetchStudents();
+    
+    if (this.projectId) {
+      this.fetchStudents();
+    } else {
+      this.errorMessage = 'Brak identyfikatora projektu. Proszę przejść do widoku przez stronę grup.';
+    }
   },
   methods: {
 
@@ -157,12 +183,31 @@ export default {
 
     async fetchStudents() {
       if (!this.isPromoter) return;
+      if (!this.projectId) {
+        this.errorMessage = 'Brak identyfikatora projektu. Nie można pobrać studentów z grupy.';
+        return;
+      }
+      
       try {
-        const response = await axios.get('/api/v1/students');
-        this.students = response.data;
+        console.log('Fetching students for project ID:', this.projectId);
+        const response = await axios.get(`/api/v1/view/groups/students?id=${this.projectId}`);
+        console.log('Students in group response:', response.data);
+        
+        if (Array.isArray(response.data)) {
+          this.students = response.data;
+        } else {
+          console.warn('Unexpected response format for students:', response.data);
+          this.students = [];
+        }
+        
+        if (this.students.length === 0) {
+          console.warn('No students found in the group with ID:', this.projectId);
+        } else {
+          console.log('Found', this.students.length, 'students in the group');
+        }
       } catch (error) {
-        console.error('Błąd przy pobieraniu studentów:', error);
-        this.errorMessage = 'Nie udało się pobrać listy studentów.';
+        console.error('Błąd przy pobieraniu studentów z grupy:', error);
+        this.errorMessage = 'Nie udało się pobrać listy studentów z grupy.';
         this.students = [];
       }
     },

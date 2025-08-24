@@ -72,7 +72,7 @@
                       :disabled="!isUserInGroup(group) && !isPromoter"
                       :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
                 <i class="icon-eye"></i>
-                {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca magisterska') : 'Brak dostępu' }}
+                {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca dyplomowa') : 'Brak dostępu' }}
               </button>
             </td>
           </tr>
@@ -200,7 +200,7 @@ export default {
             
             return {
               ...group,
-              thesis_status: response.data.status || 'PENDING'
+              thesis_status: response.data.approval_status || response.data.status || 'PENDING'
             };
           } catch (error) {
             console.warn(`Could not fetch thesis status for group ${group.name}:`, error);
@@ -285,7 +285,7 @@ export default {
       }
     },
     
-    viewGroup(group) {
+    async viewGroup(group) {
       if (!group || !group.project_id) {
         console.error('Cannot view group: Invalid project_id', group);
         return;
@@ -299,11 +299,23 @@ export default {
         }, 5000);
         return;
       }
+
+      try {
+        const refreshedGroup = await this.refreshThesisStatus(group);
+        group = refreshedGroup || group;
+      } catch (error) {
+        console.warn('Failed to refresh thesis status:', error);
+      }
       
       console.log('Navigating to group with project_id:', group.project_id);
+      console.log('Group details:', {
+        name: group.name,
+        thesis_status: group.thesis_status,
+        isThesisAccepted: this.isThesisAccepted(group)
+      });
       
       const isThesisAccepted = this.isThesisAccepted(group);
-      console.log('Is thesis accepted:', isThesisAccepted);
+      console.log('Is thesis accepted:', isThesisAccepted, 'Redirecting to:', isThesisAccepted ? 'ChaptersPreview' : 'Thesis');
       
       if (isThesisAccepted) {
         this.$router.push({ 
@@ -321,6 +333,8 @@ export default {
     },
     
     isThesisAccepted(group) {
+      console.log('Checking thesis acceptance for group:', group.name, 'Status:', group.thesis_status);
+      
       return group.thesis_status === 'APPROVED' || 
              group.thesis_status === 'approved' ||
              group.isThesisAccepted === true ||
@@ -348,6 +362,26 @@ export default {
         return 'status-submitted';
       } else {
         return 'status-pending';
+      }
+    },
+    
+    async refreshThesisStatus(group) {
+      if (!group || !group.project_id) {
+        console.error('Cannot refresh thesis status: Invalid project_id', group);
+        return group;
+      }
+      
+      try {
+        const response = await axios.get(`/api/v1/thesis/byProjectId/${group.project_id}`);
+        console.log('Refreshed thesis status:', response.data);
+        
+        return {
+          ...group,
+          thesis_status: response.data.approval_status || response.data.status || 'PENDING'
+        };
+      } catch (error) {
+        console.error('Error refreshing thesis status:', error);
+        return group;
       }
     },
   
