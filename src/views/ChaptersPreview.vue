@@ -611,14 +611,9 @@ export default {
         }
         
         const commentDto = {
-          version_id: this.selectedFileForComment.id,
+          version: parseInt(this.selectedFileForComment.id),
           text: this.fileComment,
-          uploader: {
-            id: Number(authStore.userId)
-          },
-          version: {
-            id: this.selectedFileForComment.id
-          }
+          uploader: parseInt(authStore.userId)
         };
         
         console.log('Creating new comment:', commentDto);

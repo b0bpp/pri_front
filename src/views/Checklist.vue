@@ -1,7 +1,7 @@
 <template>
     <div class="wrapper">
         <div class="card">
-            <h2 class="title">Checklista dla {{ studentName || (fileId ? 'Wersji #' + fileId : 'Unknown') }}</h2>
+            <h2 class="title">Checklista dla wersji #{{ chapterVersion || 'Unknown' }}</h2>
             
             <div v-if="loading" class="loading-indicator">
                 <p>Ładowanie checklisty...</p>
@@ -57,8 +57,7 @@ export default {
     data() {
         return {
             isPromoter: authStore.isPromoter,
-            studentId: null,
-            studentName: '',
+            chapterVersion: this.fileId, 
             checklist: { 
                 id: null,
                 isPassed: false,
@@ -88,12 +87,12 @@ export default {
             return [];
         },
         async fetchChecklist() {
-            console.log('fileId:', this.fileId);
+            console.log('Fetching checklist for chapter version ID:', this.chapterVersion);
             this.loading = true;
             try {
                 const response = await axios.get(`/api/v1/view/note`, {
                     params: { 
-                        id: this.fileId 
+                        id: this.chapterVersion 
                     }
                 });
                 console.log('Checklist response:', response.data);
@@ -110,10 +109,8 @@ export default {
                     if (this.checklist.models && this.checklist.models.length > 0) {
                         console.log(`Processing ${this.checklist.models.length} checklist items`);
                         
-                        this.checklist.models.forEach(question => {
-                            // Ensure points is a number
+                        this.checklist.models.forEach(question => { 
                             question.points = question.points != null ? Number(question.points) : 0;
-                            // Set checked property based on points
                             question.checked = question.points > 0;
                             console.log(`Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
                         });
@@ -124,18 +121,6 @@ export default {
                     } else {
                         console.warn('No checklist models found in the response');
                     }
-                    
-                    if (response.data.chapterVersion?.student) {
-                        this.studentId = response.data.chapterVersion.student.id;
-                        this.studentName = `${response.data.chapterVersion.student.fname} ${response.data.chapterVersion.student.lname}`;
-                    } else if (response.data.studentInfo) {
-                        this.studentId = response.data.studentInfo.id;
-                        this.studentName = `${response.data.studentInfo.fname} ${response.data.studentInfo.lname}`;
-                    } else if (response.data.versionId) {
-                        this.fetchStudentInfoByVersionId(response.data.versionId);
-                    } else {
-                        console.warn('No student information found in the response');
-                    }
                 } else if (!response.data || Object.keys(response.data).length === 0 || response.data.present === false) {
                     console.warn('Empty response data received or Optional.empty() returned');
                     this.checklist = {
@@ -143,12 +128,8 @@ export default {
                         isPassed: false,
                         models: [],
                         checklistQuestionModels: [],
-                        versionId: this.fileId
+                        versionId: this.chapterVersion
                     };
-                    
-                    if (this.fileId) {
-                        this.fetchStudentInfoByVersionId(this.fileId);
-                    }
                 }
                 
                 this.updateChecklistPassedStatus();
@@ -158,8 +139,9 @@ export default {
                 this.errorMessage = 'Nie udało się pobrać checklisty.';
                 setTimeout(async () => {
                     try {
+                        console.log('Retrying checklist fetch for chapter version ID:', this.chapterVersion);
                         const retryResponse = await axios.get(`/api/v1/view/note`, {
-                            params: { id: this.fileId }
+                            params: { id: this.chapterVersion } 
                         });
                         
                         if (retryResponse.data) {
@@ -185,52 +167,7 @@ export default {
             }
         },
         
-        async fetchStudentInfoByVersionId(versionId) {
-            try {
-                const response = await axios.get(`/api/v1/version`, {
-                    params: { id: versionId }
-                });
-                
-                console.log('Version info response:', response.data);
-                
-                if (response.data) {
-                    if (response.data.student) {
-                        this.studentId = response.data.student.id;
-                        this.studentName = `${response.data.student.fname} ${response.data.student.lname}`;
-                    } else if (response.data.ownerId || response.data.owner_id) {
-                        const studentId = response.data.ownerId || response.data.owner_id;
-                        this.fetchStudentInfoById(studentId);
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching file version info:', error);
-            }
-        },
-        
-        async fetchStudentInfoById(studentId) {
-            try {
-                const response = await axios.get(`/api/v1/student`, {
-                    params: { id: studentId }
-                });
-                
-                console.log('Student info response:', response.data);
-                
-                if (response.data) {
-                    this.studentId = response.data.id;
-                    this.studentName = `${response.data.fname || response.data.fName || ''} ${response.data.lname || response.data.lName || ''}`.trim();
-                    
-                    if (!this.studentName || this.studentName === '') {
-                        this.studentName = `Student ID: ${studentId}`;
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching student info:', error);
-                this.studentName = `Student ID: ${studentId}`;
-            }
-        },
-
         updateQuestionPoints(question) {
-            // Set points value based on checked state
             if (question.hasOwnProperty('checked')) {
                 question.points = question.checked ? 1 : 0;
                 
@@ -241,8 +178,7 @@ export default {
                 question.points = question.passed ? 1 : 0;
                 question.checked = question.passed;
             }
-            
-            // Log the update to verify points are changed
+
             console.log(`Question ${question.id} updated: ${question.question}`);
             console.log(`  - Points: ${question.points}`);
             console.log(`  - Checked: ${question.checked}`);
@@ -275,11 +211,9 @@ export default {
 
         verifyChanges(originalItems) {
             const currentItems = this.getChecklistItems();
-            
-            // Create maps of both original and current items for easier comparison
+
             const originalMap = {};
             originalItems.forEach(item => {
-                // Use ID as the key if available, otherwise use question text
                 const key = item.id ? item.id : item.question;
                 originalMap[key] = {
                     question: item.question,
@@ -292,12 +226,10 @@ export default {
             const mismatchedItems = [];
             
             currentItems.forEach(item => {
-                // Use ID as the key if available, otherwise use question text
                 const key = item.id ? item.id : item.question;
                 
                 if (originalMap[key]) {
                     const original = originalMap[key];
-                    // Check if points actually changed
                     if (original.points !== item.points || original.checked !== (item.checked || item.passed)) {
                         changeCount++;
                         mismatchedItems.push({
@@ -321,12 +253,15 @@ export default {
         },
 
         createChecklistDto(items) {
+            const versionId = parseInt(this.chapterVersion, 10);
+            
+            console.log(`Creating checklist DTO with chapter version ID: ${versionId}`);
+            
             return {
                 uploadTime: new Date(), 
                 isPassed: this.checklist.isPassed,
-                versionId: parseInt(this.fileId, 10), 
+                versionId: versionId, 
                 models: items.map(item => {
-                    // Explicitly calculate points based on checked status
                     const isChecked = item.checked || item.passed || false;
                     const pointValue = isChecked ? 1 : 0;
                     
@@ -340,7 +275,7 @@ export default {
                     };
                 }),
                 version: {
-                    id: parseInt(this.fileId, 10)
+                    id: versionId 
                 },
                 checklistId: this.checklist.id 
             };
@@ -355,9 +290,9 @@ export default {
             try {
                 try {
                     await axios.get(`/api/v1/view/note`, {
-                        params: { id: this.fileId }
+                        params: { id: this.chapterVersion } 
                     });
-                    console.log('Successfully verified checklist exists');
+                    console.log('Successfully verified checklist exists for chapter version ID:', this.chapterVersion);
                 } catch (fetchError) {
                     console.error('Error ensuring checklist exists:', fetchError);
                 }
@@ -398,9 +333,9 @@ export default {
                         try {
                             this.errorMessage = 'Próba odzyskania checklisty...';
                             const recoveryResponse = await axios.get(`/api/v1/view/note`, {
-                                params: { id: this.fileId }
+                                params: { id: this.chapterVersion } 
                             });                            
-                            console.log('Recovery successful, trying to save again...');
+                            console.log('Recovery successful, trying to save again for chapter version ID:', this.chapterVersion);
                             
                             if (recoveryResponse.data) {
                                 if (recoveryResponse.data.present === true && recoveryResponse.data.value) {
@@ -411,10 +346,8 @@ export default {
                                 }
                                 
                                 if (this.checklist.models && this.checklist.models.length > 0) {
-                                    this.checklist.models.forEach(question => {
-                                        // Ensure points is a number
-                                        question.points = question.points != null ? Number(question.points) : 0;
-                                        // Set checked property based on points
+                                    this.checklist.models.forEach(question => {                                    
+                                        question.points = question.points != null ? Number(question.points) : 0;                                        
                                         question.checked = question.points > 0;
                                         console.log(`Recovery: Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
                                     });
