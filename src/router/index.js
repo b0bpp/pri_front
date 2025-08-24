@@ -24,7 +24,7 @@ const routes = [
     props: true,
   },
   {
-    path: '/checklist/file/:fileId',
+    path: '/checklist/file/:chapterVersionId',
     name: 'FileChecklist',
     component: Checklist,
     props: true,

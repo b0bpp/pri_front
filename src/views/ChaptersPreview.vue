@@ -282,8 +282,14 @@ export default {
       
       return versions.map((version) => {
         console.log('Processing version:', version);
+        let chapterVersionId = version.id; 
+        let fileId = version.fileId || version.file_id; 
+
+        console.log('Version IDs extracted:', {
+          chapterVersionId: chapterVersionId,
+          fileId: fileId
+        });
         
-        let fileId = version.fileId || version.file_id;
         let fileName = version.name || version.file_name || 'Brak Nazwy';
 
         if (version.link) {
@@ -338,11 +344,13 @@ export default {
           senderName: senderName,
           uploaderId: uploaderId,
           ownerId: ownerId,
-          link: version.link
+          link: version.link,
+          chapterVersionId: version.versionId || version.version_id || version.id || fileId
         });
         
         return {
-          id: fileId,
+          id: fileId, 
+          chapterVersionId: chapterVersionId, 
           name: fileName,
           uploadedAt: uploadDate, 
           senderName: senderName,
@@ -513,7 +521,14 @@ export default {
     },
     
     goToFileChecklist(file) {
-      this.$router.push({ name: 'FileChecklist', params: { fileId: file.id } });
+      if (!file.chapterVersionId) {
+        console.error('No chapter version ID available for file:', file);
+        this.errorMessage = 'Nie można otworzyć checklisty - brak ID wersji rozdziału.';
+        return;
+      }
+      
+      console.log(`Navigating to checklist with chapter version ID: ${file.chapterVersionId}`);
+      this.$router.push({ name: 'FileChecklist', params: { chapterVersionId: file.chapterVersionId } });
     },
     
     goToStudentChecklist() {

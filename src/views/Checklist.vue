@@ -53,11 +53,16 @@ import authStore from '/src/stores/authStore';
 
 export default {
     name: 'Checklist',
-    props: ['fileId'],
+    props: {
+        chapterVersionId: {
+            type: [String, Number],
+            required: true
+        }
+    },
     data() {
         return {
             isPromoter: authStore.isPromoter,
-            chapterVersion: this.fileId, 
+            chapterVersion: null, 
             checklist: { 
                 id: null,
                 isPassed: false,
@@ -75,7 +80,14 @@ export default {
         }
     },
     created() {
-        this.fetchChecklist();
+        if (this.chapterVersionId) {
+            this.chapterVersion = this.chapterVersionId;
+            console.log('Setting chapter version to:', this.chapterVersion);
+            this.fetchChecklist();
+        } else {
+            console.error('No chapterVersionId provided to Checklist component');
+            this.errorMessage = 'Nie można załadować checklisty: brak ID wersji';
+        }
     },
     methods: {
         getChecklistItems() {
@@ -87,12 +99,18 @@ export default {
             return [];
         },
         async fetchChecklist() {
+            if (!this.chapterVersion) {
+                console.error('Cannot fetch checklist: chapter version ID is missing');
+                this.errorMessage = 'Nie można załadować checklisty: brak ID wersji';
+                return;
+            }
+            
             console.log('Fetching checklist for chapter version ID:', this.chapterVersion);
             this.loading = true;
-            try {
+            try {               
                 const response = await axios.get(`/api/v1/view/note`, {
                     params: { 
-                        id: this.chapterVersion 
+                        id: this.chapterVersion  
                     }
                 });
                 console.log('Checklist response:', response.data);
