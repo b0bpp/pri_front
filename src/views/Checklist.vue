@@ -110,7 +110,7 @@ export default {
                         console.log(`Processing ${this.checklist.models.length} checklist items`);
                         
                         this.checklist.models.forEach(question => { 
-                            question.points = question.points != null ? Number(question.points) : 0;
+                            question.points = question.points != null ? (Number(question.points) > 0 ? 1 : 0) : 0;
                             question.checked = question.points > 0;
                             console.log(`Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
                         });
@@ -168,31 +168,35 @@ export default {
         },
         
         updateQuestionPoints(question) {
-            if (question.hasOwnProperty('checked')) {
-                question.points = question.checked ? 1 : 0;
-                
-                if (question.hasOwnProperty('passed')) {
-                    question.passed = question.checked;
-                }
-            } else if (question.hasOwnProperty('passed')) {
-                question.points = question.passed ? 1 : 0;
-                question.checked = question.passed;
+            const isChecked = Boolean(question.checked);
+            question.points = isChecked ? 1 : 0;
+            
+            if (question.hasOwnProperty('passed')) {
+                question.passed = isChecked;
             }
 
-            console.log(`Question ${question.id} updated: ${question.question}`);
-            console.log(`  - Points: ${question.points}`);
-            console.log(`  - Checked: ${question.checked}`);
-            console.log(`  - Critical: ${question.isCritical || question.is_critical || false}`);
+            console.log(`Question ${question.id || 'new'} updated:`, {
+                question: question.question,
+                checked: isChecked,
+                points: question.points,
+                critical: question.critical || question.isCritical || question.is_critical || false
+            });
             
             this.updateChecklistPassedStatus();
         },
         
         updateChecklistPassedStatus() {
             const items = this.getChecklistItems();
-            const hasCheckedItems = items.some(q => q.points > 0);
-            this.checklist.isPassed = hasCheckedItems;
+            if (!items || items.length === 0) {
+                this.checklist.isPassed = false;
+                console.log('No items to check, setting isPassed to false');
+                return;
+            }
+
+            const allChecked = items.every(q => q.points > 0);
+            this.checklist.isPassed = allChecked;
             
-            console.log(`Checklist pass status updated: ${this.checklist.isPassed} (at least one checked: ${hasCheckedItems})`);
+            console.log(`Checklist pass status updated: ${this.checklist.isPassed} (all checked: ${allChecked})`);
         },
 
         calculateTotalPoints() {
@@ -245,7 +249,8 @@ export default {
             });
             
             if (changeCount === 0) {
-                console.warn('No changes detected after save! This might indicate a backend issue.');
+                console.warn('No changes detected after save! This might indicate a backend issue or field name mismatch.');
+                console.log('Check the backend logs to see if the data is being received correctly.');
             } else {
                 console.log(`Verified ${changeCount} changes were saved successfully.`);
                 console.log('Changed items:', mismatchedItems);
@@ -256,29 +261,40 @@ export default {
             const versionId = parseInt(this.chapterVersion, 10);
             
             console.log(`Creating checklist DTO with chapter version ID: ${versionId}`);
-            
-            return {
-                uploadTime: new Date(), 
-                isPassed: this.checklist.isPassed,
-                versionId: versionId, 
-                models: items.map(item => {
-                    const isChecked = item.checked || item.passed || false;
-                    const pointValue = isChecked ? 1 : 0;
-                    
-                    console.log(`Saving item "${item.question}" with checked=${isChecked}, points=${pointValue}`);
-                    
-                    return {
-                        ...(item.id && { id: item.id }),
-                        question: item.question,
-                        points: pointValue,
-                        isCritical: item.isCritical || item.is_critical || false
-                    };
-                }),
-                version: {
-                    id: versionId 
-                },
-                checklistId: this.checklist.id 
+            const modelsArray = items.map(item => {
+                const isChecked = Boolean(item.checked || item.passed || item.points > 0);
+                const pointValue = isChecked ? 1 : 0;
+                
+                const resultItem = {
+                    ...(item.id && { id: item.id }),
+                    question: item.question,
+                    points: pointValue,
+                    critical: item.critical || item.isCritical || item.is_critical || false
+                };
+                
+                console.log(`Saving item "${item.question}":`, {
+                    id: item.id || 'new',
+                    checked: isChecked,
+                    points: pointValue,
+                    critical: resultItem.critical
+                });
+                
+                return resultItem;
+            });
+
+            const dto = {
+                upload_time: new Date(), 
+                passed: this.checklist.isPassed,
+                version_id: versionId, 
+                models: modelsArray
             };
+
+            console.log("Final DTO models points check:");
+            dto.models.forEach(model => {
+                console.log(`Item ${model.id} (${model.question}): points = ${model.points}`);
+            });
+            
+            return dto;
         },
 
         async saveChecklist() {
@@ -288,23 +304,28 @@ export default {
             this.successMessage = '';
             
             try {
+                let checklistExists = false;
                 try {
-                    await axios.get(`/api/v1/view/note`, {
+                    const checkResponse = await axios.get(`/api/v1/view/note`, {
                         params: { id: this.chapterVersion } 
                     });
-                    console.log('Successfully verified checklist exists for chapter version ID:', this.chapterVersion);
+                    
+                    if (checkResponse.data && Object.keys(checkResponse.data).length > 0) {
+                        checklistExists = true;
+                        console.log('Found existing checklist for chapter version ID:', this.chapterVersion);
+                    }
                 } catch (fetchError) {
-                    console.error('Error ensuring checklist exists:', fetchError);
+                    console.error('Error checking if checklist exists:', fetchError);
                 }
                 
                 const items = this.getChecklistItems();
                 const checklistDto = this.createChecklistDto(items);
 
-                if (this.checklist && this.checklist.id) {
-                    checklistDto.id = this.checklist.id;
-                    console.log('Using existing checklist ID:', this.checklist.id);
+                if (!checklistDto.version_id || checklistDto.version_id <= 0) {
+                    console.warn('Invalid version_id, using chapterVersion:', this.chapterVersion);
+                    checklistDto.version_id = parseInt(this.chapterVersion, 10);
                 }
-                
+
                 console.log('Saving checklist with structure:', JSON.stringify(checklistDto, null, 2));
 
                 const config = {
@@ -315,13 +336,18 @@ export default {
                 
                 const response = await axios.post('/api/v1/post/note', checklistDto, config);
                 console.log('Save response:', response);
-                this.successMessage = 'Checklist została zapisana pomyślnie.';
-                setTimeout(() => {
-                    this.successMessage = '';
-                }, 3000);
                 
-                await this.fetchChecklist();
-                this.verifyChanges(items);
+                if (response.data === true) {
+                    this.successMessage = 'Checklist została zapisana pomyślnie.';
+                    setTimeout(() => {
+                        this.successMessage = '';
+                    }, 3000);
+
+                    await this.fetchChecklist();
+                    this.verifyChanges(items);
+                } else {
+                    throw new Error(`Unexpected response from server: ${response.data}`);
+                }
             } catch (error) {
                 console.error('Błąd przy zapisywaniu checklisty:', error);
          
