@@ -1,7 +1,7 @@
 <template>
     <div class="wrapper">
         <div class="card">
-            <h2 class="title">Checklista dla {{ studentName || 'Unknown' }}</h2>
+            <h2 class="title">Checklista dla {{ studentName || (fileId ? 'Wersji #' + fileId : 'Unknown') }}</h2>
             
             <div v-if="loading" class="loading-indicator">
                 <p>Ładowanie checklisty...</p>
@@ -24,15 +24,12 @@
                     <span :class="{ 'completed': item.checked }">
                         {{ item.question }}
                         <small v-if="item.isCritical || item.is_critical" class="critical-badge">(Krytyczne)</small>
-                        <small class="points-badge">{{ item.checked ? '+1' : '-1' }} pkt</small>
+                        <small class="points-badge">{{ item.checked ? '+1' : '0' }} pkt</small>
                     </span>
                 </div>
                 <div class="actions">
                     <button v-if="isPromoter" class="save-btn" @click="saveChecklist">
                         Zapisz
-                    </button>
-                    <button v-if="isPromoter" class="update-status-btn" @click="toggleChecklistStatus">
-                        {{ checklist.isPassed ? 'Oznacz jako niezaliczone' : 'Oznacz jako zaliczone' }}
                     </button>
                 </div>
             </div>
@@ -95,20 +92,30 @@ export default {
             this.loading = true;
             try {
                 const response = await axios.get(`/api/v1/view/note`, {
-                    params: { id: this.fileId }
+                    params: { 
+                        id: this.fileId 
+                    }
                 });
                 console.log('Checklist response:', response.data);
                 
                 console.log('Response structure:', JSON.stringify(response.data, null, 2));
                 
                 if (response.data && Object.keys(response.data).length > 0) {
-                    this.checklist = response.data;
+                    this.checklist = response.data;         
+                    if (response.data.present === true && response.data.value) {
+                        this.checklist = response.data.value;
+                        console.log('Unwrapped checklist from Optional response');
+                    }
                     
                     if (this.checklist.models && this.checklist.models.length > 0) {
                         console.log(`Processing ${this.checklist.models.length} checklist items`);
                         
                         this.checklist.models.forEach(question => {
+                            // Ensure points is a number
+                            question.points = question.points != null ? Number(question.points) : 0;
+                            // Set checked property based on points
                             question.checked = question.points > 0;
+                            console.log(`Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
                         });
                         
                         if (!this.checklist.checklistQuestionModels) {
@@ -124,11 +131,24 @@ export default {
                     } else if (response.data.studentInfo) {
                         this.studentId = response.data.studentInfo.id;
                         this.studentName = `${response.data.studentInfo.fname} ${response.data.studentInfo.lname}`;
+                    } else if (response.data.versionId) {
+                        this.fetchStudentInfoByVersionId(response.data.versionId);
                     } else {
                         console.warn('No student information found in the response');
                     }
-                } else {
-                    console.warn('Empty response data received');
+                } else if (!response.data || Object.keys(response.data).length === 0 || response.data.present === false) {
+                    console.warn('Empty response data received or Optional.empty() returned');
+                    this.checklist = {
+                        id: null,
+                        isPassed: false,
+                        models: [],
+                        checklistQuestionModels: [],
+                        versionId: this.fileId
+                    };
+                    
+                    if (this.fileId) {
+                        this.fetchStudentInfoByVersionId(this.fileId);
+                    }
                 }
                 
                 this.updateChecklistPassedStatus();
@@ -141,10 +161,17 @@ export default {
                         const retryResponse = await axios.get(`/api/v1/view/note`, {
                             params: { id: this.fileId }
                         });
+                        
                         if (retryResponse.data) {
+                            if (retryResponse.data.present === true && retryResponse.data.value) {
+                                this.checklist = retryResponse.data.value;
+                                console.log('Unwrapped checklist from Optional response during retry');
+                            } else {
+                                this.checklist = retryResponse.data;
+                            }
+                            
                             console.log('Successfully retrieved checklist on retry');
                             this.errorMessage = '';
-                            this.checklist = retryResponse.data;
                             this.updateChecklistPassedStatus();
                         }
                     } catch (retryError) {
@@ -157,30 +184,79 @@ export default {
                 this.loading = false;
             }
         },
+        
+        async fetchStudentInfoByVersionId(versionId) {
+            try {
+                const response = await axios.get(`/api/v1/version`, {
+                    params: { id: versionId }
+                });
+                
+                console.log('Version info response:', response.data);
+                
+                if (response.data) {
+                    if (response.data.student) {
+                        this.studentId = response.data.student.id;
+                        this.studentName = `${response.data.student.fname} ${response.data.student.lname}`;
+                    } else if (response.data.ownerId || response.data.owner_id) {
+                        const studentId = response.data.ownerId || response.data.owner_id;
+                        this.fetchStudentInfoById(studentId);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching file version info:', error);
+            }
+        },
+        
+        async fetchStudentInfoById(studentId) {
+            try {
+                const response = await axios.get(`/api/v1/student`, {
+                    params: { id: studentId }
+                });
+                
+                console.log('Student info response:', response.data);
+                
+                if (response.data) {
+                    this.studentId = response.data.id;
+                    this.studentName = `${response.data.fname || response.data.fName || ''} ${response.data.lname || response.data.lName || ''}`.trim();
+                    
+                    if (!this.studentName || this.studentName === '') {
+                        this.studentName = `Student ID: ${studentId}`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching student info:', error);
+                this.studentName = `Student ID: ${studentId}`;
+            }
+        },
 
         updateQuestionPoints(question) {
-            
+            // Set points value based on checked state
             if (question.hasOwnProperty('checked')) {
-                question.points = question.checked ? 1 : -1;
+                question.points = question.checked ? 1 : 0;
                 
                 if (question.hasOwnProperty('passed')) {
                     question.passed = question.checked;
                 }
             } else if (question.hasOwnProperty('passed')) {
-                question.points = question.passed ? 1 : -1;
+                question.points = question.passed ? 1 : 0;
                 question.checked = question.passed;
             }
+            
+            // Log the update to verify points are changed
+            console.log(`Question ${question.id} updated: ${question.question}`);
+            console.log(`  - Points: ${question.points}`);
+            console.log(`  - Checked: ${question.checked}`);
+            console.log(`  - Critical: ${question.isCritical || question.is_critical || false}`);
+            
             this.updateChecklistPassedStatus();
-            console.log(`Question ${question.id} updated: ${question.question}, Points: ${question.points}, Critical: ${question.isCritical || question.is_critical || false}`);
         },
         
         updateChecklistPassedStatus() {
             const items = this.getChecklistItems();
-            const hasCriticalFailures = items.some(
-                q => (q.isCritical || q.is_critical) && (q.points <= 0)
-            );
-            this.checklist.isPassed = !hasCriticalFailures;
-            console.log(`Checklist pass status updated: ${this.checklist.isPassed}`);
+            const hasCheckedItems = items.some(q => q.points > 0);
+            this.checklist.isPassed = hasCheckedItems;
+            
+            console.log(`Checklist pass status updated: ${this.checklist.isPassed} (at least one checked: ${hasCheckedItems})`);
         },
 
         calculateTotalPoints() {
@@ -197,22 +273,76 @@ export default {
             return totalPoints;
         },
 
-        toggleChecklistStatus() {
-            this.checklist.isPassed = !this.checklist.isPassed;
+        verifyChanges(originalItems) {
+            const currentItems = this.getChecklistItems();
+            
+            // Create maps of both original and current items for easier comparison
+            const originalMap = {};
+            originalItems.forEach(item => {
+                // Use ID as the key if available, otherwise use question text
+                const key = item.id ? item.id : item.question;
+                originalMap[key] = {
+                    question: item.question,
+                    points: item.points,
+                    checked: item.checked || item.passed
+                };
+            });
+            
+            let changeCount = 0;
+            const mismatchedItems = [];
+            
+            currentItems.forEach(item => {
+                // Use ID as the key if available, otherwise use question text
+                const key = item.id ? item.id : item.question;
+                
+                if (originalMap[key]) {
+                    const original = originalMap[key];
+                    // Check if points actually changed
+                    if (original.points !== item.points || original.checked !== (item.checked || item.passed)) {
+                        changeCount++;
+                        mismatchedItems.push({
+                            id: item.id,
+                            question: item.question,
+                            originalPoints: original.points,
+                            currentPoints: item.points,
+                            originalChecked: original.checked,
+                            currentChecked: item.checked || item.passed
+                        });
+                    }
+                }
+            });
+            
+            if (changeCount === 0) {
+                console.warn('No changes detected after save! This might indicate a backend issue.');
+            } else {
+                console.log(`Verified ${changeCount} changes were saved successfully.`);
+                console.log('Changed items:', mismatchedItems);
+            }
         },
 
         createChecklistDto(items) {
             return {
-                ...(this.checklist.id && { id: this.checklist.id }),
                 uploadTime: new Date(), 
                 isPassed: this.checklist.isPassed,
                 versionId: parseInt(this.fileId, 10), 
-                models: items.map(item => ({
-                    ...(item.id && { id: item.id }),
-                    question: item.question,
-                    points: item.checked || item.passed ? 1 : -1,
-                    isCritical: item.isCritical || item.is_critical || false
-                }))
+                models: items.map(item => {
+                    // Explicitly calculate points based on checked status
+                    const isChecked = item.checked || item.passed || false;
+                    const pointValue = isChecked ? 1 : 0;
+                    
+                    console.log(`Saving item "${item.question}" with checked=${isChecked}, points=${pointValue}`);
+                    
+                    return {
+                        ...(item.id && { id: item.id }),
+                        question: item.question,
+                        points: pointValue,
+                        isCritical: item.isCritical || item.is_critical || false
+                    };
+                }),
+                version: {
+                    id: parseInt(this.fileId, 10)
+                },
+                checklistId: this.checklist.id 
             };
         },
 
@@ -234,6 +364,11 @@ export default {
                 
                 const items = this.getChecklistItems();
                 const checklistDto = this.createChecklistDto(items);
+
+                if (this.checklist && this.checklist.id) {
+                    checklistDto.id = this.checklist.id;
+                    console.log('Using existing checklist ID:', this.checklist.id);
+                }
                 
                 console.log('Saving checklist with structure:', JSON.stringify(checklistDto, null, 2));
 
@@ -251,6 +386,7 @@ export default {
                 }, 3000);
                 
                 await this.fetchChecklist();
+                this.verifyChanges(items);
             } catch (error) {
                 console.error('Błąd przy zapisywaniu checklisty:', error);
          
@@ -266,11 +402,21 @@ export default {
                             });                            
                             console.log('Recovery successful, trying to save again...');
                             
-                            if (recoveryResponse.data && recoveryResponse.data.id) {
-                                this.checklist = recoveryResponse.data;
+                            if (recoveryResponse.data) {
+                                if (recoveryResponse.data.present === true && recoveryResponse.data.value) {
+                                    this.checklist = recoveryResponse.data.value;
+                                    console.log('Unwrapped checklist from Optional response during recovery');
+                                } else {
+                                    this.checklist = recoveryResponse.data;
+                                }
+                                
                                 if (this.checklist.models && this.checklist.models.length > 0) {
                                     this.checklist.models.forEach(question => {
+                                        // Ensure points is a number
+                                        question.points = question.points != null ? Number(question.points) : 0;
+                                        // Set checked property based on points
                                         question.checked = question.points > 0;
+                                        console.log(`Recovery: Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
                                     });
                                 }
                                 const items = this.getChecklistItems();
@@ -431,22 +577,6 @@ export default {
 
 .save-btn:hover {
   background-color: #218838;
-}
-
-.update-status-btn {
-  padding: 0.5rem 1.5rem;
-  border-radius: 0.5rem;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
-}
-
-.update-status-btn:hover {
-  background-color: #0069d9;
 }
 
 .error-message {
