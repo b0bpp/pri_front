@@ -15,7 +15,7 @@
         <label for="titleEng">Tytuł pracy ENG</label>
         <input
           id="titleEng"
-          v-model="thesis.titleEng"
+          v-model="thesis.title_en"
           :readonly="isPromoter || thesisAccepted"
           class="form-control"
         />
@@ -33,7 +33,7 @@
         <label for="descriptionEng">Opis pracy ENG</label>
         <textarea
           id="descriptionEng"
-          v-model="thesis.descriptionEng"
+          v-model="thesis.description_en"
           :readonly="isPromoter || thesisAccepted"
           class="form-control"
         ></textarea>
@@ -42,14 +42,15 @@
         <label for="promoterComment">Komentarz promotora do pracy</label>
         <textarea
           id="promoterComment"
-          v-model="thesis.promoterComment"
+          v-model="thesis.supervisor_comment"
           :readonly="!isPromoter || thesisAccepted"
           class="form-control"
         ></textarea>
       </div>
-      <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz</button>
+      <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz zmiany</button>
+      <button v-if="canEditComment && !thesisAccepted" type="button" class="btn btn-primary" @click="savePromoterComment">Zapisz komentarz promotora</button>
       <button
-        v-if="isPromoter && !thesisAccepted && thesis.status === 'submitted' && allChaptersAccepted"
+        v-if="isPromoter && !thesisAccepted && thesis.approval_status === 'submitted' && allChaptersAccepted"
         type="button"
         class="btn btn-success"
         @click="acceptThesis"
@@ -57,8 +58,8 @@
         Akceptuj
       </button>
       <p v-if="thesisAccepted" class="accepted-message">Praca została zaakceptowana i nie można jej już edytować.</p>
-      <p v-if="thesis.status === 'rejected'" class="rejected-message">Praca została odrzucona. Możesz wprowadzić zmiany i ponownie ją zgłosić.</p>
-      <p v-if="isPromoter && !allChaptersAccepted && thesis.status === 'submitted'" class="warning-message">
+      <p v-if="thesis.approval_status === 'rejected'" class="rejected-message">Praca została odrzucona. Możesz wprowadzić zmiany i ponownie ją zgłosić.</p>
+      <p v-if="isPromoter && !allChaptersAccepted && thesis.approval_status === 'submitted'" class="warning-message">
         Nie wszystkie rozdziały zostały zaakceptowane. Zanim będzie można zaakceptować pracę, należy zaakceptować rozdziały wszystkich członków grupy.
       </p>
     </form>
@@ -91,11 +92,11 @@
           </div>
           <div class="chapter-actions">
             <button 
-              v-if="userId === chapter.user_id || isPromoter"
+              v-if="userId === chapter.user_id || userId === chapter.user_data_id || isPromoter"
               class="btn btn-view"
               @click="viewChapter(chapter)"
             >
-              {{ userId === chapter.user_id ? 'Edytuj rozdział' : 'Zobacz rozdział' }}
+              {{ (userId === chapter.user_id || userId === chapter.user_data_id) ? 'Edytuj rozdział' : 'Zobacz rozdział' }}
             </button>
           </div>
         </div>
@@ -116,7 +117,12 @@
       <div class="modal-content">
         <div class="modal-header">
           <h3>{{ editingOwnChapter ? 'Twój rozdział' : 'Rozdział studenta' }}</h3>
-          <button class="modal-close" @click="closeChapterModal">&times;</button>
+          <div class="modal-actions">
+            <button v-if="isPromoter && selectedChapterId" class="btn btn-primary save-comment-btn" @click="saveChapterComment">
+              Zapisz komentarz
+            </button>
+            <button class="modal-close" @click="closeChapterModal">&times;</button>
+          </div>
         </div>
         <div class="modal-body">
           <student-chapter 
@@ -143,15 +149,16 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
-      canEdit: !authStore.isPromoter || false,
+      canEdit: !authStore.isPromoter, 
+      canEditComment: authStore.isPromoter, 
       userId: authStore.userId,
       thesis: {
         title: '',
-        titleEng: '',
+        title_en: '',
         description: '',
-        descriptionEng: '',
-        promoterComment: '',
-        status: 'pending', 
+        description_en: '',
+        supervisor_comment: '',
+        approval_status: 'pending', 
       },
       thesisId: null, 
       projectId: null, 
@@ -170,7 +177,8 @@ export default {
     allChaptersAccepted() {
       if (this.groupChapters.length === 0) return false;
       return this.groupChapters.every(chapter => 
-        chapter.status === 'approved' || chapter.status === 'APPROVED'
+        chapter.approval_status === 'approved' || 
+        chapter.approval_status === 'APPROVED'
       );
     }
   },
@@ -195,17 +203,17 @@ export default {
           this.thesis = {
             ...response.data,
             title: response.data.title || '',
-            titleEng: response.data.titleEng || response.data.title_en || '',
+            title_en: response.data.title_en || '',
             description: response.data.description || '',
-            descriptionEng: response.data.descriptionEng || response.data.description_en || '',
-            promoterComment: response.data.promoterComment || response.data.supervisor_comment || '',
-            status: (response.data.status || response.data.approval_status || 'pending').toLowerCase()
+            description_en: response.data.description_en || '',
+            supervisor_comment: response.data.supervisor_comment || '',
+            approval_status: (response.data.approval_status || 'pending').toLowerCase()
           };
           
-          const status = response.data.status || response.data.approval_status || '';
+          const status = response.data.approval_status || '';
           this.thesisAccepted = status.toUpperCase() === 'APPROVED' || status.toLowerCase() === 'approved';
           this.thesisId = response.data.id;
-          this.projectId = response.data.projectId;
+          this.projectId = response.data.project_id;
         } catch (error) {
           if (error.response && error.response.status === 404) {
             console.log('No thesis exists yet for this project. Need to create one first.');
@@ -213,11 +221,11 @@ export default {
             this.projectId = projectId;
             this.thesis = {
               title: '',
-              titleEng: '',
+              title_en: '',
               description: '',
-              descriptionEng: '',
-              promoterComment: '',
-              status: 'pending'
+              description_en: '',
+              supervisor_comment: '',
+              approval_status: 'pending'
             };
             this.errorMessage = 'Praca dyplomowa nie istnieje jeszcze w systemie. Możesz wprowadzić dane i zapisać, aby ją utworzyć.';
           } else {
@@ -242,12 +250,23 @@ export default {
           return;
         }
 
+        let currentServerData = {};
+        if (this.thesisId) {
+          try {
+            const thesisResponse = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
+            currentServerData = thesisResponse.data;
+            console.log('Current thesis data from server before student update:', currentServerData);
+          } catch (fetchError) {
+            console.error('Error fetching current thesis data:', fetchError);
+          }
+        }
+
         const thesisData = {
           title: this.thesis.title,
-          titleEn: this.thesis.titleEng, 
+          title_en: this.thesis.title_en,
           description: this.thesis.description,
-          descriptionEn: this.thesis.descriptionEng, 
-          supervisorComment: this.thesis.promoterComment 
+          description_en: this.thesis.description_en,
+          supervisor_comment: currentServerData.supervisor_comment || this.thesis.supervisor_comment
         };
         
         console.log('Saving thesis data:', thesisData);
@@ -261,7 +280,7 @@ export default {
         } else {
           try {
             console.log('Attempting to create a new thesis for project:', projectId);
-            thesisData.projectId = parseInt(projectId);
+            thesisData.project_id = parseInt(projectId);
             response = await axios.post('/api/v1/thesis', thesisData);
             console.log('Successfully created new thesis:', response.data);
           } catch (createError) {
@@ -275,15 +294,15 @@ export default {
         
         if (response.data && response.data.id) {
           this.thesisId = response.data.id;
-          const status = response.data.status || response.data.approval_status;
-          this.thesis.status = status?.toLowerCase() || 'submitted';
+          const status = response.data.approval_status;
+          this.thesis.approval_status = status?.toLowerCase() || 'submitted';
           this.thesis = {
             ...this.thesis,
             title: response.data.title || this.thesis.title,
-            titleEng: response.data.titleEng || response.data.title_en || this.thesis.titleEng,
+            title_en: response.data.title_en || this.thesis.title_en,
             description: response.data.description || this.thesis.description,
-            descriptionEng: response.data.descriptionEng || response.data.description_en || this.thesis.descriptionEng,
-            promoterComment: response.data.promoterComment || response.data.supervisor_comment || this.thesis.promoterComment
+            description_en: response.data.description_en || this.thesis.description_en,
+            supervisor_comment: response.data.supervisor_comment || this.thesis.supervisor_comment
           };
         }
         
@@ -308,6 +327,55 @@ export default {
       setTimeout(() => (this.successMessage = ''), 2000);
     },
 
+    async savePromoterComment() {
+      try {
+        if (!this.thesisId) {
+          this.errorMessage = 'Brak identyfikatora pracy. Nie można zapisać komentarza.';
+          return;
+        }
+
+        // First, fetch the current thesis data from the server
+        const projectId = this.$route.params.groupId;
+        let currentServerData;
+        
+        try {
+          const thesisResponse = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
+          currentServerData = thesisResponse.data;
+          console.log('Current thesis data from server:', currentServerData);
+        } catch (fetchError) {
+          console.error('Error fetching current thesis data:', fetchError);
+          this.errorMessage = 'Nie udało się pobrać aktualnych danych pracy. Komentarz może nie zostać prawidłowo zapisany.';
+          return;
+        }
+        
+        // Prepare the update data with all fields from the server and our new comment
+        const updatedThesisData = {
+          title: currentServerData.title,
+          title_en: currentServerData.title_en,
+          description: currentServerData.description,
+          description_en: currentServerData.description_en,
+          supervisor_comment: this.thesis.supervisor_comment,
+          approval_status: currentServerData.approval_status
+        };
+        
+        console.log('Saving thesis with updated comment:', updatedThesisData);
+
+        const response = await axios.patch(`/api/v1/thesis/${this.thesisId}`, updatedThesisData);
+        console.log('Comment saved response:', response.data);
+
+        if (response.data) {
+          this.thesis.supervisor_comment = response.data.supervisor_comment || this.thesis.supervisor_comment;
+        }
+        
+        this.successMessage = 'Komentarz promotora został zapisany.';
+        this.errorMessage = '';
+      } catch (error) {
+        console.error('Błąd przy zapisywaniu komentarza promotora:', error);
+        this.errorMessage = 'Nie udało się zapisać komentarza promotora.';
+      }
+      setTimeout(() => (this.successMessage = ''), 2000);
+    },
+
     async acceptThesis() {
       try {
         if (!this.thesisId) {
@@ -325,7 +393,7 @@ export default {
         console.log('Thesis approval response:', response.data);
         
         this.thesisAccepted = true;
-        this.thesis.status = 'approved';
+        this.thesis.approval_status = 'approved';
         
         this.successMessage = 'Praca została zaakceptowana.';
         this.errorMessage = '';
@@ -355,34 +423,60 @@ export default {
           return;
         }
         
-        console.log('Fetching chapters for project ID:', projectId);
+        console.log('Fetching thesis with chapters for project ID:', projectId);
         
         try {
-          const response = await axios.get(`/api/v1/chapter/${projectId}/all`);
-          console.log('Successfully fetched chapters:', response.data);
+          const response = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
+          console.log('Successfully fetched thesis with chapters:', response.data);
           
-          if (response.data) {
-            this.groupChapters = response.data;
-            this.groupChapters = this.groupChapters.map(chapter => ({
-              ...chapter,
-              chapter_id: chapter.id,
-              user_id: chapter.userId,
-              status: chapter.status?.toLowerCase() || 'pending'
+          if (response.data && response.data.chapters && Array.isArray(response.data.chapters)) {
+            const chapters = response.data.chapters;
+          
+            this.groupChapters = await Promise.all(chapters.map(async chapter => {
+              let studentName = '';
+
+              if (chapter.user_data_id) {
+                try {
+                  const userResponse = await axios.get(`/api/v1/view/groups/students?id=${projectId}`);
+                  if (userResponse.data && Array.isArray(userResponse.data)) {
+                    const studentData = userResponse.data.find(student => student.id === chapter.user_data_id);
+                    if (studentData) {
+                      studentName = `${studentData.fname || ''} ${studentData.lname || ''}`.trim();
+                    }
+                  }
+                } catch (userError) {
+                  console.warn(`Could not fetch student data for project ID ${projectId}:`, userError);
+                }
+              }
+              
+              return {
+                ...chapter,
+                chapter_id: chapter.id,
+                user_id: chapter.user_data_id,
+                userId: chapter.user_data_id,
+                studentName: studentName || `Student ID: ${chapter.user_data_id}`,
+                status: chapter.approval_status?.toLowerCase() || 'pending',
+                title: chapter.title || 'Bez tytułu',
+                description: chapter.description || 'Brak opisu'
+              };
             }));
+            
           } else {
             this.groupChapters = [];
           }
         } catch (error) {
           if (error.response && error.response.status === 404) {
-            console.warn('No chapters found for project ID:', projectId);
+            console.warn('No thesis found for project ID:', projectId);
             this.groupChapters = [];
           } else {
-            console.error('Error fetching chapters:', error);
+            console.error('Error fetching thesis with chapters:', error);
             throw error; 
           }
         }
         
-        this.ownChapter = this.groupChapters.find(chapter => chapter.user_id === this.userId);
+        this.ownChapter = this.groupChapters.find(chapter => 
+          chapter.user_id === this.userId || chapter.user_data_id === this.userId
+        );
         
       } catch (error) {
         console.error('Błąd przy pobieraniu rozdziałów grupy:', error);
@@ -397,7 +491,7 @@ export default {
     },
 
     getChapterStatusClass(chapter) {
-      const status = chapter.status?.toLowerCase();
+      const status = chapter.approval_status?.toLowerCase();
       switch (status) {
         case 'approved': return 'status-accepted';
         case 'rejected': return 'status-rejected';
@@ -407,7 +501,7 @@ export default {
     },
 
     getChapterStatusText(chapter) {
-      const status = chapter.status?.toLowerCase();
+      const status = chapter.approval_status?.toLowerCase();
       switch (status) {
         case 'approved': return 'Zaakceptowany';
         case 'rejected': return 'Odrzucony';
@@ -418,8 +512,12 @@ export default {
 
     viewChapter(chapter) {
       this.selectedChapterId = chapter.chapter_id || chapter.id;
-      this.editingOwnChapter = chapter.user_id === this.userId || chapter.userId === this.userId;
+      this.editingOwnChapter = chapter.user_id === this.userId || chapter.user_data_id === this.userId;
       this.showChapterModal = true;
+      
+      console.log('Viewing chapter:', chapter);
+      console.log('Selected chapter ID:', this.selectedChapterId);
+      console.log('Editing own chapter:', this.editingOwnChapter);
       
       setTimeout(() => {
         if (this.$refs.chapterComponent) {
@@ -435,10 +533,11 @@ export default {
       this.showChapterModal = true;
     
       console.log('Adding own chapter with projectId:', this.projectId || this.$route.params.groupId);
+      console.log('User ID for new chapter:', this.userId);
       
       setTimeout(() => {
         if (this.$refs.chapterComponent) {
-          this.$refs.chapterComponent.createNewChapter(this.userId);
+          this.$refs.chapterComponent.createNewChapter(this.userId, this.thesisId);
           this.$refs.chapterComponent.setGroupId(this.projectId || this.$route.params.groupId);
         }
       }, 100);
@@ -453,6 +552,12 @@ export default {
     closeChapterModal() {
       this.showChapterModal = false;
       this.fetchGroupChapters();
+    },
+
+    saveChapterComment() {
+      if (this.$refs.chapterComponent) {
+        this.$refs.chapterComponent.savePromoterComment();
+      }
     }
   }
 };
@@ -628,6 +733,15 @@ textarea.form-control {
 }
 .modal-header h3 {
   margin: 0;
+}
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.save-comment-btn {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
 }
 .modal-close {
   background: none;

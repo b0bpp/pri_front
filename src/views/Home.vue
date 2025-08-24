@@ -34,7 +34,7 @@ export default {
       try {
         const response = await axios.get('/api/v1/students');
         const students = response.data;
-        const student = students.find(s => s.id === 23);
+        const student = students.find(s => s.id === 28);
 
         if (!student) {
           throw new Error('Student not found');
@@ -48,7 +48,7 @@ export default {
           throw new Error('Student name data is incomplete');
         }
 
-        authStore.setUser(false, 23, firstName, lastName);
+        authStore.setUser(false, 28, firstName, lastName);
         console.log('Student login successful:', authStore);
         this.router.push('/groups-panel');
       } catch (error) {

@@ -48,10 +48,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="group in filteredGroups" :key="group.project_id" class="group-row" @click="selectGroup(group)">
+          <tr v-for="group in filteredGroups" :key="group.project_id" 
+              class="group-row" 
+              :class="{'user-group': isUserInGroup(group), 'restricted-group': !isUserInGroup(group) && !isPromoter}"
+              @click="selectGroup(group)">
             <td class="group-name">
               <div class="name-cell">
                 <span class="project-name">{{ group.name }}</span>
+                <span v-if="isUserInGroup(group) && !isPromoter" class="member-badge">Twoja grupa</span>
               </div>
             </td>
             <td class="supervisor-cell">
@@ -63,9 +67,12 @@
               </span>
             </td>
             <td class="actions-cell">
-              <button class="action-btn primary" @click.stop="viewGroup(group)">
+              <button class="action-btn primary" 
+                      @click.stop="viewGroup(group)"
+                      :disabled="!isUserInGroup(group) && !isPromoter"
+                      :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
                 <i class="icon-eye"></i>
-                {{ isThesisAccepted(group) ? 'Rozdziały' : 'Praca magisterska' }}
+                {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca magisterska') : 'Brak dostępu' }}
               </button>
             </td>
           </tr>
@@ -95,6 +102,9 @@ export default {
       selectedSupervisor: '',
       sortField: 'name',
       sortDirection: 'asc',
+      userGroups: [], 
+      userId: authStore.userId,
+      isPromoter: authStore.isPromoter
     };
   },
   computed: {
@@ -158,6 +168,9 @@ export default {
           processedGroups = [];
         }
         this.groups = await this.fetchThesisStatuses(processedGroups);
+        if (!this.isPromoter && this.userId) {
+          this.extractUserGroupsFromData();
+        }
         
         console.log('Processed groups with thesis status:', this.groups);
       } catch (error) {
@@ -181,7 +194,7 @@ export default {
           }
           
           try {
-            const response = await axios.get(`/api/v1/thesis/${group.project_id}`);
+            const response = await axios.get(`/api/v1/thesis/byProjectId/${group.project_id}`);
             
             console.log(`Thesis status for group ${group.name}:`, response.data);
             
@@ -205,20 +218,36 @@ export default {
         return groups; 
       }
     },
-    
-    getSupervisorName(supervisor) {
-      if (!supervisor) return 'Nieprzypisany';
-      
-      const firstName = supervisor.fName || supervisor.fname || '';
-      const lastName = supervisor.lName || supervisor.lname || '';
-      
-      if (firstName && lastName) {
-        return `${firstName} ${lastName}`;
-      } else if (firstName || lastName) {
-        return firstName || lastName;
-      } else {
-        return 'Nieprzypisany';
+ 
+    async fetchUserGroups() {
+      this.extractUserGroupsFromData();
+    },
+
+    extractUserGroupsFromData() {
+      try {
+        if (!this.userId) return;
+        
+        console.log('Extracting user group membership from groups data');
+        const userGroupIds = this.groups
+          .filter(group => 
+            group.students && Array.isArray(group.students) && 
+            group.students.some(student => student.id === this.userId)
+          )
+          .map(group => group.project_id);
+        
+        this.userGroups = userGroupIds;
+        console.log('User belongs to groups with IDs:', this.userGroups);
+      } catch (error) {
+        console.error('Error extracting user groups:', error);
+        this.userGroups = [];
       }
+    },
+    
+    isUserInGroup(group) {
+      if (this.isPromoter) return true; 
+      
+      const groupId = group.project_id;
+      return this.userGroups.includes(groupId);
     },
     
     sortBy(field) {
@@ -236,11 +265,38 @@ export default {
     },
 
     selectGroup(group) {
-      console.log('Selected group:', group);
+      // Only handle clicks for groups the user has access to
+      if (this.isPromoter || this.isUserInGroup(group)) {
+        console.log('Selected group:', group);
+      }
     },
+    getSupervisorName(supervisor) {
+      if (!supervisor) return 'Nieprzypisany';
+      
+      const firstName = supervisor.fName || supervisor.fname || '';
+      const lastName = supervisor.lName || supervisor.lname || '';
+      
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      } else if (firstName || lastName) {
+        return firstName || lastName;
+      } else {
+        return 'Nieprzypisany';
+      }
+    },
+    
     viewGroup(group) {
       if (!group || !group.project_id) {
         console.error('Cannot view group: Invalid project_id', group);
+        return;
+      }
+
+      if (!this.isPromoter && !this.isUserInGroup(group)) {
+        console.warn('Student attempted to access a group they are not a member of:', group.project_id);
+        this.errorMessage = 'Brak dostępu do pracy i rozdziałów tej grupy. Możesz przeglądać tylko grupy, których jesteś członkiem.';
+        setTimeout(() => {
+          this.errorMessage = '';
+        }, 5000);
         return;
       }
       
@@ -572,5 +628,34 @@ export default {
 .error-message {
   color: #ef4444;
   margin-bottom: 1rem;
+}
+
+.user-group {
+  background-color: rgba(76, 110, 245, 0.05);
+}
+
+.restricted-group {
+  opacity: 0.7;
+}
+
+.member-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  background-color: #4c6ef5;
+  color: white;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.disabled-btn {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #a0aec0;
+}
+
+.disabled-btn:hover {
+  background-color: #a0aec0;
 }
 </style>
