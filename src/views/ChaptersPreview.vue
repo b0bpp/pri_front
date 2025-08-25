@@ -1,7 +1,12 @@
 <template>
   <div class="wrapper">
     <div class="card">
-      <h2 class="title">Przegląd rozdziałów - {{ groupName }}</h2>
+      <div class="header-container">
+        <h2 class="title">Przegląd rozdziałów - {{ groupName }}</h2>
+        <button class="back-btn" @click="goBack">
+          <i class="icon-back"></i> Powrót
+        </button>
+      </div>
 
       <!-- Dropdown: Lista studentów dla promotora -->
       <div class="student-selector" v-if="isPromoter">
@@ -163,6 +168,10 @@ export default {
     }
   },
   methods: {
+
+    goBack() {
+      this.$router.push({ name: 'GroupsPanel' });
+    },
 
     getStudentDisplayName(student) {
       const firstName = student.fName || student.fname || student.firstName || student.f_name || '';
@@ -744,10 +753,39 @@ export default {
   font-family: Arial, sans-serif;
 }
 
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #4c6ef5;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.back-btn:hover {
+  background-color: #4263eb;
+}
+
+.icon-back::before {
+  content: "←";
+}
+
 .title {
   text-align: center;
   color: #007bff;
-  margin-bottom: 2rem;
+  margin: 0;
 }
 
 .student-selector {

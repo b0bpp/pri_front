@@ -67,13 +67,22 @@
               </span>
             </td>
             <td class="actions-cell">
-              <button class="action-btn primary" 
-                      @click.stop="viewGroup(group)"
-                      :disabled="!isUserInGroup(group) && !isPromoter"
-                      :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
-                <i class="icon-eye"></i>
-                {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca dyplomowa') : 'Brak dostępu' }}
-              </button>
+              <div class="action-buttons">
+                <button class="action-btn primary" 
+                        @click.stop="viewGroup(group)"
+                        :disabled="!isUserInGroup(group) && !isPromoter"
+                        :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
+                  <i class="icon-eye"></i>
+                  {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca dyplomowa') : 'Brak dostępu' }}
+                </button>
+                
+                <button v-if="isPromoter && isThesisAccepted(group)" 
+                        class="action-btn secondary copy-btn" 
+                        @click.stop="viewThesisDetails(group)">
+                  <i class="icon-copy"></i>
+                  Kopiuj elementy
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -409,6 +418,18 @@ export default {
         console.error('Error updating thesis status:', error);
         throw error;
       }
+    },
+    
+    viewThesisDetails(group) {
+      if (!this.isPromoter || !group || !group.project_id) {
+        return;
+      }
+      
+      console.log('Navigating to thesis details view for group:', group.name);
+      this.$router.push({ 
+        name: 'ThesisCopy', 
+        params: { groupId: group.project_id.toString() }
+      });
     }
   }
 };
@@ -599,6 +620,32 @@ export default {
 
 .icon-eye::before {
   content: "👁";
+}
+
+.icon-copy::before {
+  content: "📋";
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-btn.secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.action-btn.secondary:hover {
+  background-color: #5a6268;
+}
+
+.action-btn.copy-btn {
+  background-color: #17a2b8;
+}
+
+.action-btn.copy-btn:hover {
+  background-color: #138496;
 }
 
 .empty-state {

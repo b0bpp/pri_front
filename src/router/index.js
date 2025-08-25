@@ -4,6 +4,7 @@ import GroupsPanel from '@/views/GroupsPanel.vue'
 import ChaptersPreview from '@/views/ChaptersPreview.vue'
 import Checklist from '@/views/Checklist.vue'
 import Thesis from '@/views/Thesis.vue'
+import ThesisCopy from '@/views/ThesisCopy.vue'
 import StudentChapter from '@/components/StudentChapter.vue'
 
 const routes = [
@@ -39,6 +40,12 @@ const routes = [
     path: '/chapter/:groupId/:chapterId?', 
     name: 'StudentChapter',
     component: StudentChapter,
+    props: true,
+  },
+  {
+    path: '/thesis-copy/:groupId',
+    name: 'ThesisCopy',
+    component: ThesisCopy,
     props: true,
   },
 ]

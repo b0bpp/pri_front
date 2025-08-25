@@ -1,13 +1,18 @@
 <template>
   <div class="thesis-wrapper">
-    <h2>Informacje o pracy dyplomowej</h2>
+    <div class="header-container">
+      <h2>Informacje o pracy dyplomowej</h2>
+      <button class="back-btn" @click="goBack">
+        <i class="icon-back"></i> Powrót
+      </button>
+    </div>
     <form @submit.prevent="saveThesis">
       <div class="form-group">
         <label for="title">Tytuł pracy</label>
         <input
           id="title"
           v-model="thesis.title"
-          :readonly="isPromoter || thesisAccepted"
+          :readonly="thesisAccepted"
           class="form-control"
         />
       </div>
@@ -16,7 +21,7 @@
         <input
           id="titleEng"
           v-model="thesis.title_en"
-          :readonly="isPromoter || thesisAccepted"
+          :readonly="thesisAccepted"
           class="form-control"
         />
       </div>
@@ -25,7 +30,7 @@
         <textarea
           id="description"
           v-model="thesis.description"
-          :readonly="isPromoter || thesisAccepted"
+          :readonly="thesisAccepted"
           class="form-control"
         ></textarea>
       </div>
@@ -34,7 +39,7 @@
         <textarea
           id="descriptionEng"
           v-model="thesis.description_en"
-          :readonly="isPromoter || thesisAccepted"
+          :readonly="thesisAccepted"
           class="form-control"
         ></textarea>
       </div>
@@ -47,16 +52,18 @@
           class="form-control"
         ></textarea>
       </div>
-      <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz zmiany</button>
-      <button v-if="canEditComment && !thesisAccepted" type="button" class="btn btn-primary" @click="savePromoterComment">Zapisz komentarz promotora</button>
-      <button
-        v-if="isPromoter && !thesisAccepted && allChaptersAccepted"
-        type="button"
-        class="btn btn-success"
-        @click="acceptThesis"
-      >
-        Akceptuj
-      </button>
+      <div class="button-group">
+        <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz zmiany</button>
+        <button v-if="canEditComment && !thesisAccepted" type="button" class="btn btn-primary" @click="savePromoterComment">Zapisz komentarz promotora</button>
+        <button
+          v-if="isPromoter && !thesisAccepted && allChaptersAccepted"
+          type="button"
+          class="btn btn-success"
+          @click="acceptThesis"
+        >
+          Akceptuj
+        </button>
+      </div>
       <p v-if="thesisAccepted" class="accepted-message">Praca została zaakceptowana i nie można jej już edytować.</p>
       <p v-if="thesis.approval_status === 'rejected'" class="rejected-message">Praca została odrzucona. Możesz wprowadzić zmiany i ponownie ją zgłosić.</p>
       <p v-if="isPromoter && !allChaptersAccepted" class="warning-message">
@@ -149,7 +156,7 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
-      canEdit: !authStore.isPromoter, 
+      canEdit: true,  
       canEditComment: authStore.isPromoter, 
       userId: authStore.userId,
       thesis: {
@@ -187,6 +194,9 @@ export default {
     this.fetchGroupChapters();
   },
   methods: {
+    goBack() {
+      this.$router.push({ name: 'GroupsPanel' });
+    },
     async fetchThesis() {
       try {
         const projectId = this.$route.params.groupId;
@@ -255,7 +265,7 @@ export default {
           try {
             const thesisResponse = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
             currentServerData = thesisResponse.data;
-            console.log('Current thesis data from server before student update:', currentServerData);
+            console.log('Current thesis data from server before update:', currentServerData);
           } catch (fetchError) {
             console.error('Error fetching current thesis data:', fetchError);
           }
@@ -266,7 +276,7 @@ export default {
           title_en: this.thesis.title_en,
           description: this.thesis.description,
           description_en: this.thesis.description_en,
-          supervisor_comment: currentServerData.supervisor_comment || this.thesis.supervisor_comment
+          supervisor_comment: this.isPromoter ? this.thesis.supervisor_comment : (currentServerData.supervisor_comment || this.thesis.supervisor_comment)
         };
         
         console.log('Saving thesis data:', thesisData);
@@ -334,7 +344,6 @@ export default {
           return;
         }
 
-        // First, fetch the current thesis data from the server
         const projectId = this.$route.params.groupId;
         let currentServerData;
         
@@ -347,8 +356,7 @@ export default {
           this.errorMessage = 'Nie udało się pobrać aktualnych danych pracy. Komentarz może nie zostać prawidłowo zapisany.';
           return;
         }
-        
-        // Prepare the update data with all fields from the server and our new comment
+
         const updatedThesisData = {
           title: currentServerData.title,
           title_en: currentServerData.title_en,
@@ -578,6 +586,36 @@ export default {
   border-radius: 1rem;
   box-shadow: 0 8px 16px rgba(0,0,0,0.08);
 }
+
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #4c6ef5;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.back-btn:hover {
+  background-color: #4263eb;
+}
+
+.icon-back::before {
+  content: "←";
+}
+
 .form-group {
   margin-bottom: 1.5rem;
 }
@@ -590,6 +628,12 @@ export default {
 }
 textarea.form-control {
   min-height: 100px;
+}
+.button-group {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 .btn {
   border: none;
@@ -605,12 +649,10 @@ textarea.form-control {
 .btn-success {
   background-color: #28a745;
   color: white;
-  margin-left: 1rem;
 }
 .btn-danger {
   background-color: #dc3545;
   color: white;
-  margin-left: 1rem;
 }
 .btn-view {
   background-color: #17a2b8;

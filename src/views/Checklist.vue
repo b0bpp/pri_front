@@ -1,7 +1,12 @@
 <template>
     <div class="wrapper">
         <div class="card">
-            <h2 class="title">Checklista dla wersji #{{ chapterVersion || 'Unknown' }}</h2>
+            <div class="header-container">
+                <h2 class="title">Checklista dla wersji #{{ chapterVersion || 'Unknown' }}</h2>
+                <button class="back-btn" @click="goBack">
+                    <i class="icon-back"></i> Powrót
+                </button>
+            </div>
             
             <div v-if="loading" class="loading-indicator">
                 <p>Ładowanie checklisty...</p>
@@ -70,7 +75,8 @@ export default {
             },
             errorMessage: '',
             successMessage: '',
-            loading: false
+            loading: false,
+            projectId: null
         }
     },
     computed: {
@@ -84,12 +90,29 @@ export default {
             this.chapterVersion = this.chapterVersionId;
             console.log('Setting chapter version to:', this.chapterVersion);
             this.fetchChecklist();
+            try {
+                const referrer = document.referrer;
+                const match = referrer.match(/\/chapters-preview\/(\d+)/);
+                if (match && match[1]) {
+                    this.projectId = match[1];
+                    console.log('Retrieved projectId from referrer:', this.projectId);
+                }
+            } catch (e) {
+                console.error('Error getting projectId from referrer:', e);
+            }
         } else {
             console.error('No chapterVersionId provided to Checklist component');
             this.errorMessage = 'Nie można załadować checklisty: brak ID wersji';
         }
     },
     methods: {
+        goBack() {
+            if (this.projectId) {
+                this.$router.push({ name: 'ChaptersPreview', params: { id: this.projectId } });
+            } else {
+                this.$router.go(-1);
+            }
+        },
         getChecklistItems() {
             if (this.checklist.checklistQuestionModels && this.checklist.checklistQuestionModels.length > 0) {
                 return this.checklist.checklistQuestionModels;
@@ -122,6 +145,11 @@ export default {
                     if (response.data.present === true && response.data.value) {
                         this.checklist = response.data.value;
                         console.log('Unwrapped checklist from Optional response');
+                    }
+
+                    if (response.data.project_id) {
+                        this.projectId = response.data.project_id;
+                        console.log('Retrieved projectId from checklist data:', this.projectId);
                     }
                     
                     if (this.checklist.models && this.checklist.models.length > 0) {
@@ -461,10 +489,39 @@ export default {
   font-family: Arial, sans-serif;
 }
 
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #4c6ef5;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.back-btn:hover {
+  background-color: #4263eb;
+}
+
+.icon-back::before {
+  content: "←";
+}
+
 .title {
   text-align: center;
   color: #007bff;
-  margin-bottom: 2rem;
+  margin: 0;
 }
 
 .checklist-summary {
