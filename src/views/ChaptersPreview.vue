@@ -19,16 +19,49 @@
 
       <!-- Upload -->
       <div class="upload-section">
-        <h3>Prześlij plik</h3>
-        <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
-        <button 
-          class="btn btn-primary" 
-          :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
-          @click="uploadFile"
-        >
-          Wyślij
-        </button>
-        <p v-if="uploadSuccess" class="success-message">Plik przesłany pomyślnie.</p>
+        <h3>Prześlij materiały</h3>
+        
+      <!-- OneNote/Plik dla promotora -->
+      <div v-if="isPromoter" class="upload-toggle">
+        <label class="toggle-option" :class="{ 'active-file': !isLinkMode }">
+          <input type="radio" v-model="isLinkMode" :value="false">
+          Plik
+        </label>
+        <label class="toggle-option" :class="{ 'active-onenote': isLinkMode }">
+          <input type="radio" v-model="isLinkMode" :value="true">
+          Link OneNote
+        </label>
+      </div>        
+      <!-- Wysyłanie Pliku -->
+        <div v-if="!isLinkMode">
+          <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
+          <button 
+            class="btn btn-primary file-btn" 
+            :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
+            @click="uploadFile"
+          >
+            Wyślij plik
+          </button>
+        </div>
+        
+        <!-- OneNote link  -->
+        <div v-if="isLinkMode && isPromoter" class="link-input-container">
+          <input 
+            type="text" 
+            class="link-input" 
+            v-model="oneNoteLink" 
+            placeholder="Wklej link do OneNote"
+          />
+          <button 
+            class="btn btn-primary onenote-btn" 
+            :disabled="!oneNoteLink || !selectedStudentId" 
+            @click="shareOneNoteLink"
+          >
+            Udostępnij link
+          </button>
+        </div>
+        
+        <p v-if="uploadSuccess" class="success-message">Materiał przesłany pomyślnie.</p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
 
@@ -127,12 +160,19 @@ export default {
       commentSuccess: false,
       fileComments: {},
       projectId: null,
-      groupName: ''
+      groupName: '',
+      isLinkMode: false,
+      oneNoteLink: ''
     };
   },
   computed: {
     displayFiles() {
-      return this.isPromoter ? this.studentFiles : this.files;
+      const files = this.isPromoter ? this.studentFiles : this.files;
+      return [...files].sort((a, b) => {
+        const dateA = new Date(a.uploadedAt).getTime();
+        const dateB = new Date(b.uploadedAt).getTime();
+        return dateB - dateA;
+      });
     }
   },
   watch: {
@@ -503,6 +543,91 @@ export default {
           this.errorMessage = errorMessage;
           this.uploadSuccess = false;
       }
+  },
+
+  async shareOneNoteLink() {
+    if (!this.oneNoteLink) {
+      this.errorMessage = 'Proszę wprowadzić link OneNote.';
+      return;
+    }
+
+    if (!this.selectedStudentId) {
+      this.errorMessage = 'Proszę wybrać studenta.';
+      return;
+    }
+
+    let uploaderId, ownerId;
+    
+    try {
+      uploaderId = Number(authStore.userId);
+      ownerId = Number(this.selectedStudentId);
+    } catch (error) {
+      this.errorMessage = 'Błąd konwersji ID użytkownika.';
+      return;
+    }
+
+    if (!uploaderId || uploaderId <= 0 || !Number.isInteger(uploaderId)) {
+      this.errorMessage = 'Nieprawidłowe ID promotora.';
+      return;
+    }
+
+    if (!ownerId || ownerId <= 0 || !Number.isInteger(ownerId)) {
+      this.errorMessage = 'Nieprawidłowe ID studenta.';
+      return;
+    }
+
+    const linkData = {
+      file: this.oneNoteLink,  
+      uploaderId: uploaderId.toString(),
+      ownerId: ownerId.toString(),
+      isOneNoteLink: true,
+      name: 'Link OneNote'
+    };
+
+    try {
+      console.log('=== ONENOTE LINK DEBUG INFO ===');
+      console.log('Original authStore.userId:', authStore.userId, typeof authStore.userId);
+      console.log('Original selectedStudentId:', this.selectedStudentId, typeof this.selectedStudentId);
+      console.log('Converted uploaderId:', uploaderId, typeof uploaderId);
+      console.log('Converted ownerId:', ownerId, typeof ownerId);
+      console.log('isPromoter:', this.isPromoter);
+      console.log('Link details:', {
+          url: this.oneNoteLink,
+          isOneNoteLink: true
+      });
+      
+      console.log('Preparing to send OneNote link:', linkData);
+      
+      const url = `/api/v1/files/links?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
+      console.log('Request URL:', url);
+      
+      const response = await axios.post(url, linkData, {
+          headers: { 
+              'Content-Type': 'application/json'
+          },
+          timeout: 30000 
+      });
+      
+      if (response.status === 200 && response.data) {
+        this.uploadSuccess = true;
+        this.errorMessage = '';
+        this.oneNoteLink = '';
+        await this.fetchStudentFiles();
+      } else {
+        throw new Error(`Link sharing failed. Server returned: ${response.data}`);
+      }
+
+      this.uploadSuccess = true;
+      this.errorMessage = '';
+      setTimeout(() => {
+        this.uploadSuccess = false;
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error sharing OneNote link:', error);
+      this.errorMessage = 'Nie udało się udostępnić linku. Spróbuj ponownie później.';
+      this.uploadSuccess = false;
+    }
   },
 
     formatDate(dateString) {
@@ -1024,5 +1149,83 @@ export default {
 
 .onenote-link:hover {
   background-color: #5f1487;
+}
+
+/* New styles for OneNote link feature */
+.upload-toggle {
+  display: flex;
+  margin-bottom: 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.toggle-option {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem;
+  cursor: pointer;
+  background-color: #f8f9fa;
+  transition: all 0.2s;
+}
+
+.toggle-option input {
+  position: absolute;
+  opacity: 0;
+}
+
+/* Blue styling for file option */
+.toggle-option.active-file {
+  background-color: #0d6efd;
+  color: white;
+  font-weight: 600;
+}
+
+/* Purple styling for OneNote option */
+.toggle-option.active-onenote {
+  background-color: #7719aa;
+  color: white;
+  font-weight: 600;
+}
+
+.link-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.link-input {
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  width: 100%;
+}
+
+.link-input:focus {
+  border-color: #7719aa;
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(119, 25, 170, 0.25);
+}
+
+/* Button color styles */
+.file-btn {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.file-btn:hover:not(:disabled) {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+}
+
+.onenote-btn {
+  background-color: #7719aa;
+  border-color: #7719aa;
+}
+
+.onenote-btn:hover:not(:disabled) {
+  background-color: #5f1487;
+  border-color: #5f1487;
 }
 </style>

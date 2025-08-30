@@ -60,9 +60,9 @@ export default {
     async loginAsPromoter() {
       this.errorMessage = '';
       try {
-        const response = await axios.get('/api/v1/students');
+        const response = await axios.get('/api/v1/users');
         const students = response.data;
-        const promoter = students.find(s => s.id === 3); 
+        const promoter = students.find(s => s.id === 1); 
 
         if (!promoter) {
           throw new Error('Promoter not found');
@@ -76,7 +76,7 @@ export default {
           throw new Error('Promoter name data is incomplete');
         }
 
-        authStore.setUser(true, 3, firstName, lastName);
+        authStore.setUser(true, 1, firstName, lastName);
         console.log('Promoter login successful:', authStore);
         this.router.push('/groups-panel');
       } catch (error) {

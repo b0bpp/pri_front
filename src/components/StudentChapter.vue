@@ -6,7 +6,7 @@
         <input
           id="title"
           v-model="chapter.title"
-          :readonly="isPromoter || chapterAccepted"
+          :readonly="chapterAccepted"
           class="form-control"
           required
         />
@@ -16,7 +16,7 @@
         <input
           id="titleEng"
           v-model="chapter.title_en"
-          :readonly="isPromoter || chapterAccepted"
+          :readonly="chapterAccepted"
           class="form-control"
           required
         />
@@ -26,7 +26,7 @@
         <textarea
           id="description"
           v-model="chapter.description"
-          :readonly="isPromoter || chapterAccepted"
+          :readonly="chapterAccepted"
           class="form-control"
           required
         ></textarea>
@@ -36,7 +36,7 @@
         <textarea
           id="descriptionEng"
           v-model="chapter.description_en"
-          :readonly="isPromoter || chapterAccepted"
+          :readonly="chapterAccepted"
           class="form-control"
           required
         ></textarea>
@@ -50,14 +50,22 @@
           class="form-control"
         ></textarea>
       </div>
-      <button v-if="canEdit && !chapterAccepted" type="submit" class="btn btn-primary">Zapisz rozdział</button>
+      <button v-if="!chapterAccepted" type="submit" class="btn btn-primary">Zapisz rozdział</button>
+      <button 
+        v-if="isPromoter && !chapterAccepted"
+        type="button"
+        class="btn btn-success"
+        @click="acceptChapter"
+      >
+        Akceptuj rozdział
+      </button>
       <button 
         v-if="isPromoter && !chapterAccepted"
         type="button"
         class="btn btn-primary save-comment-btn"
         @click="savePromoterComment"
       >
-        Zapisz komentarz promotora
+        Zapisz tylko komentarz
       </button>
       <p v-if="chapterAccepted" class="accepted-message">
         Rozdział został zaakceptowany i nie można go już edytować.
@@ -83,7 +91,6 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
-      canEdit: !authStore.isPromoter || false,
       userId: authStore.userId,
       internalGroupId: null,
       chapter: {
@@ -381,6 +388,7 @@ textarea.form-control {
   border-radius: 0.5rem;
   font-weight: 600;
   cursor: pointer;
+  margin-right: 0.5rem;
 }
 .btn-primary {
   background-color: #007bff;
@@ -389,7 +397,6 @@ textarea.form-control {
 .btn-success {
   background-color: #28a745;
   color: white;
-  margin-left: 1rem;
 }
 .btn-danger {
   background-color: #dc3545;

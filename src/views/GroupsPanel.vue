@@ -2,6 +2,9 @@
   <div class="groups-container">
     <div class="page-header">
       <h1 class="page-title">Grupy projektowe</h1>
+      <button v-if="isPromoter" class="reload-groups-btn" @click="reloadGroups">
+        <i class="icon-reload"></i> Odśwież grupy
+      </button>
     </div>
 
     <!-- Filtrowanie -->
@@ -430,6 +433,33 @@ export default {
         name: 'ThesisCopy', 
         params: { groupId: group.project_id.toString() }
       });
+    },
+    
+    async reloadGroups() {
+      if (!this.isPromoter) {
+        return;
+      }
+      
+      try {
+        this.loading = true;
+        this.errorMessage = ''; 
+        const response = await axios.post('/api/v1/reload-groups');
+        console.log('Groups reload response:', response.data);
+        
+        if (response.data && response.data.success) {        
+          alert('Grupy zostały odświeżone pomyślnie!');
+          await this.fetchGroups();
+        } else {
+          throw new Error(response.data?.message || 'Nieznany błąd podczas odświeżania grup');
+        }
+        await this.fetchGroups();
+        
+      } catch (error) {
+        console.error('Error reloading groups:', error);
+        this.errorMessage = 'Nie udało się odświeżyć grup: ' + (error.response?.data?.message || error.message);
+      } finally {
+        this.loading = false;
+      }
     }
   }
 };
@@ -447,6 +477,9 @@ export default {
 
 .page-header {
   margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .page-title {
@@ -454,6 +487,28 @@ export default {
   font-weight: 600;
   margin: 0;
   color: #2d3748;
+}
+
+.reload-groups-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.reload-groups-btn:hover {
+  background-color: #059669;
+}
+
+.icon-reload::before {
+  content: "🔄";
 }
 
 .filters-section {
