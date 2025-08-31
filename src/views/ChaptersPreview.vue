@@ -577,13 +577,13 @@ export default {
     }
 
     const linkData = {
-      file: this.oneNoteLink,  
-      uploaderId: uploaderId.toString(),
-      ownerId: ownerId.toString(),
-      isOneNoteLink: true,
-      name: 'Link OneNote'
+      owner_user_data_id: ownerId,
+      uploader_user_data_id: uploaderId,
+      link: this.oneNoteLink
     };
 
+    let apiUrl = '';
+    
     try {
       console.log('=== ONENOTE LINK DEBUG INFO ===');
       console.log('Original authStore.userId:', authStore.userId, typeof authStore.userId);
@@ -592,40 +592,96 @@ export default {
       console.log('Converted ownerId:', ownerId, typeof ownerId);
       console.log('isPromoter:', this.isPromoter);
       console.log('Link details:', {
-          url: this.oneNoteLink,
-          isOneNoteLink: true
+          url: this.oneNoteLink
       });
       
       console.log('Preparing to send OneNote link:', linkData);
+
+      const chapters = await this.fetchChapters();
+
+      if (!chapters || chapters.length === 0) {
+        this.errorMessage = 'Nie znaleziono rozdziałów dla tego projektu. Proszę najpierw utworzyć rozdział.';
+        return;
+      }
+
+      const studentChapter = chapters.find(chapter => 
+        chapter.user_data_id === Number(this.selectedStudentId)
+      );
       
-      const url = `/api/v1/files/links?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
-      console.log('Request URL:', url);
+      if (!studentChapter) {
+        console.warn('No chapter found for student ID:', this.selectedStudentId);
+        console.log('Available chapters:', chapters);
+        this.errorMessage = 'Nie znaleziono rozdziału dla wybranego studenta. Proszę najpierw utworzyć rozdział dla tego studenta.';
+        return;
+      }
       
-      const response = await axios.post(url, linkData, {
+      const chapterId = studentChapter.id;
+      console.log('Using chapter ID for student:', chapterId, 'Student ID:', this.selectedStudentId);
+      
+      if (!chapterId) {
+        this.errorMessage = 'Nie znaleziono ID rozdziału. Proszę najpierw utworzyć rozdział.';
+        return;
+      }
+      
+      apiUrl = `/api/v1/chapter/${this.projectId}/addVersionWithLink?chapterId=${chapterId}`;
+      console.log('Request URL:', apiUrl);
+      
+      const response = await axios.post(apiUrl, linkData, {
           headers: { 
               'Content-Type': 'application/json'
           },
           timeout: 30000 
       });
       
-      if (response.status === 200 && response.data) {
+      if (response.status === 200 || response.status === 201) {
         this.uploadSuccess = true;
         this.errorMessage = '';
         this.oneNoteLink = '';
+        
+        // Refresh the file list
         await this.fetchStudentFiles();
+        
+        console.log('OneNote link added successfully:', response.data);
       } else {
         throw new Error(`Link sharing failed. Server returned: ${response.data}`);
       }
 
-      this.uploadSuccess = true;
-      this.errorMessage = '';
-      setTimeout(() => {
-        this.uploadSuccess = false;
-      }, 3000);
-
     } catch (error) {
       console.error('Error sharing OneNote link:', error);
-      this.errorMessage = 'Nie udało się udostępnić linku. Spróbuj ponownie później.';
+      
+      let errorMessage = 'Nie udało się udostępnić linku.';
+      
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 400) {
+          errorMessage = 'Nieprawidłowe dane. Sprawdź poprawność linku i wybranego studenta.';
+        } else if (status === 404) {
+          errorMessage = 'Nie znaleziono rozdziału o podanym ID. Proszę utworzyć rozdział przed dodaniem linku.';
+        } else if (status === 500) {
+          errorMessage = 'Błąd serwera przy przetwarzaniu żądania. Szczegóły w konsoli.';
+
+          if (data && data.message && data.message.includes('must not be null')) {
+            errorMessage = 'Nie znaleziono rozdziału o podanym ID. Proszę utworzyć rozdział przed dodaniem linku.';
+          }
+        } else {
+          errorMessage = `Błąd serwera (${status}): ${data?.message || 'Nieznany błąd'}`;
+        }
+        
+        console.error('Server error details:', {
+          status: status,
+          data: data,
+          url: apiUrl,
+          requestBody: linkData
+        });
+      } else if (error.request) {
+        errorMessage = 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.';
+      } else if (error.message) {
+        errorMessage = `Błąd: ${error.message}`;
+      }
+      
+      this.errorMessage = errorMessage;
       this.uploadSuccess = false;
     }
   },
@@ -835,6 +891,29 @@ export default {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const matches = text.match(urlRegex);
       return matches ? matches[0] : '#';
+    },
+    
+    async fetchChapters() {
+      if (!this.projectId) {
+        console.error('No project ID available to fetch chapters');
+        return [];
+      }
+      
+      try {
+        console.log('Fetching chapters for project:', this.projectId);
+        const response = await axios.get(`/api/v1/chapter/${this.projectId}/all`);
+        
+        if (response.data && Array.isArray(response.data)) {
+          console.log('Chapters fetched successfully:', response.data);
+          return response.data;
+        } else {
+          console.warn('Unexpected response format from chapters endpoint:', response.data);
+          return [];
+        }
+      } catch (error) {
+        console.error('Error fetching chapters:', error);
+        return [];
+      }
     },
 
     async deleteComment(commentId) {
