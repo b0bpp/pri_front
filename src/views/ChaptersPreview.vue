@@ -78,7 +78,7 @@
         <tbody>
           <tr v-for="(file, index) in displayFiles" :key="index" :class="index % 2 === 0 ? 'row-light' : ''">
             <td>{{ file.senderName || 'Nieznany' }}</td>
-            <td>{{ file.name || 'Brak Nazwy' }}</td>
+            <td>{{ getDisplayName(file) }}</td>
             <td>{{ formatDate(file.uploadedAt) }}</td>
             <td class="actions-cell">
               <button class="action-btn preview-btn" @click="previewFile(file)">
@@ -695,6 +695,30 @@ export default {
         hour: '2-digit',
         minute: '2-digit',
       });
+    },
+    
+    getDisplayName(file) {
+      // If it's a regular file (not a link) or if it has a name, use that
+      if (file.name && file.name !== 'Brak Nazwy') {
+        return file.name;
+      }
+
+      if (file.link) {
+        const matches = file.link.match(/target%28[^%]+\.one%7C[^%]+%2F([^%]+)%7C/);
+        
+        if (matches && matches[1]) {
+          return decodeURIComponent(matches[1].replace(/\+/g, ' '));
+        }
+
+        const altMatches = file.link.match(/%2F([^%]+\.pdf|[^%]+\.docx|[^%]+\.xlsx|[^%]+\.pptx|[^%]+\.txt)%7C/);
+        if (altMatches && altMatches[1]) {
+          return decodeURIComponent(altMatches[1].replace(/\+/g, ' '));
+        }
+
+        return 'Link OneNote';
+      }
+
+      return 'Brak Nazwy';
     },
     
     previewFile(file) {
