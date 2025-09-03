@@ -6,6 +6,8 @@ import Checklist from '@/views/Checklist.vue'
 import Thesis from '@/views/Thesis.vue'
 import ThesisCopy from '@/views/ThesisCopy.vue'
 import StudentChapter from '@/components/StudentChapter.vue'
+import Timeline from '@/views/Timeline.vue'
+
 
 const routes = [
   {
@@ -47,6 +49,12 @@ const routes = [
     name: 'ThesisCopy',
     component: ThesisCopy,
     props: true,
+  },
+  {
+    path: '/timeline/:thesisId',
+    name: 'Timeline',
+    component: Timeline,
+    props: true
   },
 ]
 

@@ -85,6 +85,15 @@
                   <i class="icon-copy"></i>
                   Kopiuj elementy
                 </button>
+
+                <button class="action-btn primary"
+                        @click.stop="viewTimeline(group)"
+                        :disabled="!isUserInGroup(group) && !isPromoter && !isThesisAccepted(group)"
+                        :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
+                  <i class="icon-timeline"></i>
+                  {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'View timeline' : 'Brak dostępu' }}
+                </button>
+
               </div>
             </td>
           </tr>
@@ -339,6 +348,46 @@ export default {
         this.$router.push({ 
           name: 'Thesis', 
           params: { groupId: group.project_id.toString() },
+          query: { name: group.name || 'Unknown Group' }
+        });
+      }
+    },
+    async viewTimeline(group) {
+      if (!group || !group.project_id) {
+        console.error('Cannot view group: Invalid project_id', group);
+        return;
+      }
+
+      if (!this.isPromoter && !this.isUserInGroup(group)) {
+        console.warn('Student attempted to access a timeline they are not a member of:', group.project_id);
+        this.errorMessage = 'Brak dostępu do podglądu timelineu tej grupy. Możesz przeglądać tylko grupy, których jesteś członkiem.';
+        setTimeout(() => {
+          this.errorMessage = '';
+        }, 5000);
+        return;
+      }
+
+      /*try {
+        const refreshedGroup = await this.refreshThesisStatus(group);
+        group = refreshedGroup || group;
+      } catch (error) {
+        console.warn('Failed to refresh thesis status:', error);
+      }*/
+
+      console.log('Navigating to timeline with project_id:', group.project_id);
+      console.log('Group details:', {
+        name: group.name,
+        thesis_status: group.thesis_status,
+        isThesisAccepted: this.isThesisAccepted(group)
+      });
+
+      const isThesisAccepted = this.isThesisAccepted(group);
+      console.log('Is thesis accepted:', isThesisAccepted, 'Redirecting to:', isThesisAccepted ? 'ChaptersPreview' : 'Thesis');
+
+      if (isThesisAccepted) {
+        this.$router.push({
+          name: 'Timeline',
+          params: { thesisId: group.project_id.toString() },
           query: { name: group.name || 'Unknown Group' }
         });
       }
@@ -675,6 +724,10 @@ export default {
 
 .icon-eye::before {
   content: "👁";
+}
+
+.icon-timeline::before {
+  content: "📅";
 }
 
 .icon-copy::before {
