@@ -5,6 +5,11 @@
 npm install
 ```
 
+### Installs the Vue Timeline Chart
+```
+npm add vue-timeline-chart
+```
+
 ### Compiles and hot-reloads for development
 ```
 npm run serve
