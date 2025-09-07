@@ -12,7 +12,7 @@
         <input
           id="title"
           v-model="thesis.title"
-          :readonly="thesisAccepted"
+          :readonly="thesisAccepted || isVerifying"
           class="form-control"
         />
       </div>
@@ -21,7 +21,7 @@
         <input
           id="titleEng"
           v-model="thesis.title_en"
-          :readonly="thesisAccepted"
+          :readonly="thesisAccepted || isVerifying"
           class="form-control"
         />
       </div>
@@ -30,7 +30,7 @@
         <textarea
           id="description"
           v-model="thesis.description"
-          :readonly="thesisAccepted"
+          :readonly="thesisAccepted || isVerifying"
           class="form-control"
         ></textarea>
       </div>
@@ -39,7 +39,7 @@
         <textarea
           id="descriptionEng"
           v-model="thesis.description_en"
-          :readonly="thesisAccepted"
+          :readonly="thesisAccepted || isVerifying"
           class="form-control"
         ></textarea>
       </div>
@@ -48,30 +48,41 @@
         <textarea
           id="promoterComment"
           v-model="thesis.supervisor_comment"
-          :readonly="!isPromoter || thesisAccepted"
+          :readonly="!isPromoter || !isSupervisor || thesisAccepted || isVerifying"
           class="form-control"
         ></textarea>
       </div>
       <div class="button-group">
-        <button v-if="canEdit && !thesisAccepted" type="submit" class="btn btn-primary">Zapisz zmiany</button>
-        <button v-if="canEditComment && !thesisAccepted" type="button" class="btn btn-primary" @click="savePromoterComment">Zapisz komentarz promotora</button>
+        <button 
+          v-if="canEdit && !thesisAccepted && (!isPromoter || isSupervisor)" 
+          type="submit" 
+          class="btn btn-primary"
+          :disabled="isVerifying"
+        >
+          Zapisz zmiany
+        </button>
         <button
-          v-if="isPromoter && !thesisAccepted && allChaptersAccepted"
+          v-if="isPromoter && isSupervisor && !thesisAccepted && allChaptersAccepted"
           type="button"
           class="btn btn-success"
           @click="acceptThesis"
+          :disabled="isVerifying"
         >
           Akceptuj
         </button>
       </div>
       <p v-if="thesisAccepted" class="accepted-message">Praca została zaakceptowana i nie można jej już edytować.</p>
       <p v-if="thesis.approval_status === 'rejected'" class="rejected-message">Praca została odrzucona. Możesz wprowadzić zmiany i ponownie ją zgłosić.</p>
-      <p v-if="isPromoter && !allChaptersAccepted" class="warning-message">
+      <p v-if="isPromoter && isSupervisor && !allChaptersAccepted" class="warning-message">
         Nie wszystkie rozdziały zostały zaakceptowane. Zanim będzie można zaakceptować pracę, należy zaakceptować rozdziały wszystkich członków grupy.
+      </p>
+      <p v-if="isPromoter && !isSupervisor" class="warning-message">
+        Nie jesteś promotorem tej grupy. Możesz tylko przeglądać pracę, ale nie możesz jej edytować ani akceptować.
       </p>
     </form>
     <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+    <p v-if="isVerifying" class="info-message">Weryfikowanie uprawnień...</p>
     
     <!-- Sekcja z rozdziałami grupy -->
     <div class="group-chapters-section">
@@ -98,12 +109,32 @@
             <p><strong>Opis:</strong> {{ chapter.description }}</p>
           </div>
           <div class="chapter-actions">
+            <!-- For own chapter or student view of their own chapter -->
             <button 
-              v-if="userId === chapter.user_id || userId === chapter.user_data_id || isPromoter"
+              v-if="userId === chapter.user_id || userId === chapter.user_data_id"
               class="btn btn-view"
               @click="viewChapter(chapter)"
             >
-              {{ (userId === chapter.user_id || userId === chapter.user_data_id) ? 'Edytuj rozdział' : 'Zobacz rozdział' }}
+              Edytuj rozdział
+            </button>
+            
+            <!-- For promoter who is supervisor -->
+            <button 
+              v-else-if="isPromoter && isSupervisor"
+              class="btn btn-view"
+              @click="viewChapter(chapter)"
+            >
+              Zobacz rozdział
+            </button>
+            
+            <!-- For promoter who is not supervisor (view-only) -->
+            <button 
+              v-else-if="isPromoter && !isSupervisor"
+              class="btn btn-view-only"
+              @click="viewChapterReadOnly(chapter)"
+              title="Możesz tylko przeglądać rozdziały, nie możesz ich edytować ani akceptować"
+            >
+              Podgląd (tylko odczyt)
             </button>
           </div>
         </div>
@@ -125,9 +156,7 @@
         <div class="modal-header">
           <h3>{{ editingOwnChapter ? 'Twój rozdział' : 'Rozdział studenta' }}</h3>
           <div class="modal-actions">
-            <button v-if="isPromoter && selectedChapterId" class="btn btn-success" @click="acceptChapter">
-              Akceptuj
-            </button>
+            <span v-if="readOnlyMode" class="readonly-badge">Tylko odczyt</span>
             <button class="modal-close" @click="closeChapterModal">&times;</button>
           </div>
         </div>
@@ -156,8 +185,10 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
+      isSupervisor: false,
+      isVerifying: false,
       canEdit: true,  
-      canEditComment: authStore.isPromoter, 
+      canEditComment: false, // Will be updated in created hook
       userId: authStore.userId,
       thesis: {
         title: '',
@@ -178,6 +209,7 @@ export default {
       showChapterModal: false,
       selectedChapterId: null,
       editingOwnChapter: false,
+      readOnlyMode: false,
     };
   },
   computed: {
@@ -190,6 +222,17 @@ export default {
     }
   },
   created() {
+    // Initialize supervisor status as false, to be verified from the server
+    this.isSupervisor = false;
+    this.canEditComment = false; // Will be updated after verification
+    
+    console.log('Initializing supervisor status (will be verified from server)');
+    
+    // Verify supervisor status if user is a promoter
+    if (this.isPromoter) {
+      this.verifySupervisorStatus();
+    }
+    
     this.fetchThesis();
     this.fetchGroupChapters();
   },
@@ -197,6 +240,92 @@ export default {
     goBack() {
       this.$router.push({ name: 'GroupsPanel' });
     },
+    
+    async verifySupervisorStatus() {
+      this.isVerifying = true;
+      
+      if (!this.isPromoter) {
+        this.isVerifying = false;
+        return; // No need to verify for non-promoters
+      }
+      
+      const projectId = this.$route.params.groupId;
+      if (!projectId) {
+        console.warn('Cannot verify supervisor status: missing project ID');
+        // For safety, if we can't verify, we set supervisor status to false
+        this.isSupervisor = false;
+        this.canEditComment = false;
+        this.isVerifying = false;
+        return;
+      }
+      
+      try {
+        console.log('Verifying if user is supervisor for project:', projectId);
+        // Use the groups/all endpoint to get all groups with their supervisors
+        const response = await axios.get('/api/v1/view/groups/all');
+        
+        if (response.data && response.data.dtos && Array.isArray(response.data.dtos)) {
+          const allGroups = response.data.dtos;
+          console.log('All groups data:', allGroups);
+          
+          // Find the group with the matching project_id
+          const targetGroup = allGroups.find(group => 
+            group.project_id === Number(projectId) || 
+            group.project_id === projectId
+          );
+          
+          if (targetGroup) {
+            console.log('Found target group:', targetGroup);
+            
+            const supervisorId = targetGroup.supervisor?.id;
+            const userId = Number(authStore.userId);
+            
+            console.log('Group supervisor ID:', supervisorId, 'Current user ID:', userId);
+            
+            // Update supervisor status based on actual project data
+            const isActualSupervisor = supervisorId === userId;
+            
+            if (this.isSupervisor !== isActualSupervisor) {
+              console.warn(`Supervisor status mismatch - URL param: ${this.isSupervisor}, Actual: ${isActualSupervisor}`);
+              this.isSupervisor = isActualSupervisor;
+              // Update canEditComment based on new supervisor status
+              this.canEditComment = this.isPromoter && this.isSupervisor;
+              
+              if (!isActualSupervisor) {
+                this.errorMessage = 'Nie jesteś promotorem tej grupy. Możesz tylko przeglądać tezę, ale nie możesz jej edytować ani akceptować.';
+                setTimeout(() => {
+                  this.errorMessage = '';
+                }, 5000);
+              }
+            }
+          } else {
+            console.warn('Group not found with project ID:', projectId);
+            this.isSupervisor = false;
+            this.canEditComment = false;
+            this.errorMessage = 'Grupa nie została znaleziona. Dostęp został ograniczony.';
+            setTimeout(() => {
+              this.errorMessage = '';
+            }, 5000);
+          }
+        } else {
+          console.warn('Unexpected response format from groups/all:', response.data);
+          this.isSupervisor = false;
+          this.canEditComment = false;
+        }
+      } catch (error) {
+        console.error('Error verifying project supervisor:', error);
+        // For safety, if we can't verify, we set supervisor status to false
+        this.isSupervisor = false;
+        this.canEditComment = false;
+        this.errorMessage = 'Nie można zweryfikować uprawnień. Dostęp został ograniczony.';
+        setTimeout(() => {
+          this.errorMessage = '';
+        }, 5000);
+      } finally {
+        this.isVerifying = false;
+      }
+    },
+    
     async fetchThesis() {
       try {
         const projectId = this.$route.params.groupId;
@@ -252,6 +381,17 @@ export default {
     async saveThesis() {
       if (this.thesisAccepted) return;
       
+      // Re-verify supervisor status before saving
+      if (this.isPromoter) {
+        await this.verifySupervisorStatus();
+      }
+      
+      // If the user is a promoter but not the supervisor of this group, don't allow saving
+      if (this.isPromoter && !this.isSupervisor) {
+        this.errorMessage = 'Nie masz uprawnień do edycji pracy tej grupy. Możesz edytować tylko prace grup, których jesteś promotorem.';
+        return;
+      }
+      
       try {
         const projectId = this.$route.params.groupId;
         
@@ -276,7 +416,7 @@ export default {
           title_en: this.thesis.title_en,
           description: this.thesis.description,
           description_en: this.thesis.description_en,
-          supervisor_comment: this.isPromoter ? this.thesis.supervisor_comment : (currentServerData.supervisor_comment || this.thesis.supervisor_comment)
+          supervisor_comment: (this.isPromoter && this.isSupervisor) ? this.thesis.supervisor_comment : (currentServerData.supervisor_comment || this.thesis.supervisor_comment)
         };
         
         console.log('Saving thesis data:', thesisData);
@@ -337,59 +477,42 @@ export default {
       setTimeout(() => (this.successMessage = ''), 2000);
     },
 
-    async savePromoterComment() {
-      try {
-        if (!this.thesisId) {
-          this.errorMessage = 'Brak identyfikatora pracy. Nie można zapisać komentarza.';
-          return;
-        }
-
-        const projectId = this.$route.params.groupId;
-        let currentServerData;
-        
-        try {
-          const thesisResponse = await axios.get(`/api/v1/thesis/byProjectId/${projectId}`);
-          currentServerData = thesisResponse.data;
-          console.log('Current thesis data from server:', currentServerData);
-        } catch (fetchError) {
-          console.error('Error fetching current thesis data:', fetchError);
-          this.errorMessage = 'Nie udało się pobrać aktualnych danych pracy. Komentarz może nie zostać prawidłowo zapisany.';
-          return;
-        }
-
-        const updatedThesisData = {
-          title: currentServerData.title,
-          title_en: currentServerData.title_en,
-          description: currentServerData.description,
-          description_en: currentServerData.description_en,
-          supervisor_comment: this.thesis.supervisor_comment,
-          approval_status: currentServerData.approval_status
-        };
-        
-        console.log('Saving thesis with updated comment:', updatedThesisData);
-
-        const response = await axios.patch(`/api/v1/thesis/${this.thesisId}`, updatedThesisData);
-        console.log('Comment saved response:', response.data);
-
-        if (response.data) {
-          this.thesis.supervisor_comment = response.data.supervisor_comment || this.thesis.supervisor_comment;
-        }
-        
-        this.successMessage = 'Komentarz promotora został zapisany.';
-        this.errorMessage = '';
-      } catch (error) {
-        console.error('Błąd przy zapisywaniu komentarza promotora:', error);
-        this.errorMessage = 'Nie udało się zapisać komentarza promotora.';
-      }
-      setTimeout(() => (this.successMessage = ''), 2000);
-    },
-
     async acceptThesis() {
       try {
+        // Re-verify supervisor status before accepting
+        if (this.isPromoter) {
+          await this.verifySupervisorStatus();
+        }
+        
+        // Check if the promoter is the supervisor of this group
+        if (this.isPromoter && !this.isSupervisor) {
+          this.errorMessage = 'Nie masz uprawnień do akceptacji pracy tej grupy. Możesz akceptować tylko prace grup, których jesteś promotorem.';
+          return;
+        }
+        
         if (!this.thesisId) {
           this.errorMessage = 'Brak identyfikatora pracy. Najpierw zapisz pracę.';
           return;
         }
+        
+        // Fetch current thesis data from server to validate
+        try {
+          const thesisResponse = await axios.get(`/api/v1/thesis/${this.thesisId}`);
+          const currentServerData = thesisResponse.data;
+          console.log('Current thesis data from server:', currentServerData);
+          
+          // Validate that all required fields are not null or empty in the server data
+          if (!currentServerData.title || !currentServerData.title_en || 
+              !currentServerData.description || !currentServerData.description_en) {
+            this.errorMessage = 'Nie można zaakceptować pracy - wszystkie pola (poza komentarzem) muszą być zapisane w bazie danych.';
+            return;
+          }
+        } catch (fetchError) {
+          console.error('Error fetching current thesis data:', fetchError);
+          this.errorMessage = 'Nie udało się pobrać aktualnych danych pracy z serwera.';
+          return;
+        }
+        
         if (!this.allChaptersAccepted) {
           this.errorMessage = 'Nie wszystkie rozdziały zostały zaakceptowane. Nie można zaakceptować pracy.';
           return;
@@ -405,12 +528,16 @@ export default {
         
         this.successMessage = 'Praca została zaakceptowana.';
         this.errorMessage = '';
-        this.fetchThesis();
+        
+        // Navigate to Groups Panel after successful thesis acceptance
+        setTimeout(() => {
+          this.$router.push({ name: 'GroupsPanel' });
+        }, 1000); // Short delay to allow the user to see the success message
       } catch (error) {
         console.error('Błąd przy akceptacji pracy:', error);
         this.errorMessage = 'Nie udało się zaakceptować pracy.';
+        setTimeout(() => (this.errorMessage = ''), 2000);
       }
-      setTimeout(() => (this.successMessage = ''), 2000);
     },
 
     async rejectThesis() {
@@ -518,8 +645,10 @@ export default {
     },
 
     viewChapter(chapter) {
+      // Regular view (with edit rights)
       this.selectedChapterId = chapter.chapter_id || chapter.id;
       this.editingOwnChapter = chapter.user_id === this.userId || chapter.user_data_id === this.userId;
+      this.readOnlyMode = false;
       this.showChapterModal = true;
       
       console.log('Viewing chapter:', chapter);
@@ -530,6 +659,30 @@ export default {
         if (this.$refs.chapterComponent) {
           this.$refs.chapterComponent.loadChapter(this.selectedChapterId);
           this.$refs.chapterComponent.setGroupId(this.projectId || this.$route.params.groupId);
+          
+          // If promoter but not supervisor, make sure they can't edit
+          if (this.isPromoter && !this.isSupervisor) {
+            this.$refs.chapterComponent.setReadOnly(true);
+          }
+        }
+      }, 100);
+    },
+    
+    viewChapterReadOnly(chapter) {
+      // Read-only view for non-supervisor promoters
+      this.selectedChapterId = chapter.chapter_id || chapter.id;
+      this.editingOwnChapter = false;
+      this.readOnlyMode = true;
+      this.showChapterModal = true;
+      
+      console.log('Viewing chapter in read-only mode:', chapter);
+      console.log('Selected chapter ID:', this.selectedChapterId);
+      
+      setTimeout(() => {
+        if (this.$refs.chapterComponent) {
+          this.$refs.chapterComponent.loadChapter(this.selectedChapterId);
+          this.$refs.chapterComponent.setGroupId(this.projectId || this.$route.params.groupId);
+          this.$refs.chapterComponent.setReadOnly(true);
         }
       }, 100);
     },
@@ -559,18 +712,6 @@ export default {
     closeChapterModal() {
       this.showChapterModal = false;
       this.fetchGroupChapters();
-    },
-
-    saveChapterComment() {
-      if (this.$refs.chapterComponent) {
-        this.$refs.chapterComponent.savePromoterComment();
-      }
-    },
-    
-    acceptChapter() {
-      if (this.$refs.chapterComponent) {
-        this.$refs.chapterComponent.acceptChapter();
-      }
     }
   }
 };
@@ -658,12 +799,24 @@ textarea.form-control {
   background-color: #17a2b8;
   color: white;
 }
+.btn-view-only {
+  background-color: #6c757d;
+  color: white;
+}
+.modal-actions {
+  display: flex;
+  align-items: center;
+}
 .success-message {
   color: #28a745;
   margin-top: 1rem;
 }
 .error-message {
   color: #dc3545;
+  margin-top: 1rem;
+}
+.info-message {
+  color: #0d6efd;
   margin-top: 1rem;
 }
 .accepted-message {

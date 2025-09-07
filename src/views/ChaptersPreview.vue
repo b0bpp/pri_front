@@ -21,8 +21,13 @@
       <div class="upload-section">
         <h3>Prześlij materiały</h3>
         
+      <!-- Information message for promoters who are not supervisors -->
+      <div v-if="isPromoter && !isSupervisor" class="warning-message">
+        <p>Nie jesteś promotorem tej grupy. Możesz przeglądać pliki, ale nie możesz przesyłać nowych plików ani komentować.</p>
+      </div>
+      
       <!-- OneNote/Plik dla promotora -->
-      <div v-if="isPromoter" class="upload-toggle">
+      <div v-if="isPromoter && isSupervisor" class="upload-toggle">
         <label class="toggle-option" :class="{ 'active-file': !isLinkMode }">
           <input type="radio" v-model="isLinkMode" :value="false">
           Plik
@@ -33,7 +38,7 @@
         </label>
       </div>        
       <!-- Wysyłanie Pliku -->
-        <div v-if="!isLinkMode">
+        <div v-if="(!isPromoter || isSupervisor) && !isLinkMode">
           <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
           <button 
             class="btn btn-primary file-btn" 
@@ -45,7 +50,7 @@
         </div>
         
         <!-- OneNote link  -->
-        <div v-if="isLinkMode && isPromoter" class="link-input-container">
+        <div v-if="isLinkMode && isPromoter && isSupervisor" class="link-input-container">
           <input 
             type="text" 
             class="link-input" 
@@ -128,7 +133,7 @@
           
           <div class="modal-footer">
             <p v-if="commentSuccess" class="success-message">Komentarz zapisany pomyślnie!</p>
-            <button v-if="isPromoter" class="btn btn-primary" @click="saveComment">Zapisz komentarz</button>
+            <button v-if="isPromoter && isSupervisor" class="btn btn-primary" @click="saveComment">Zapisz komentarz</button>
             <button class="btn btn-secondary" @click="closeCommentModal">Zamknij</button>
           </div>
         </div>
@@ -146,6 +151,7 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
+      isSupervisor: false, // Will be set in created hook and verified
       selectedStudentId: '',
       students: [],
       files: [],
@@ -162,7 +168,9 @@ export default {
       projectId: null,
       groupName: '',
       isLinkMode: false,
-      oneNoteLink: ''
+      oneNoteLink: '',
+      isVerifying: true, // Add this to prevent interactions during verification
+      fileContentCache: new Map() // Add this to cache file content
     };
   },
   computed: {
@@ -193,7 +201,16 @@ export default {
     this.projectId = this.$route.params.id;
     this.groupName = this.$route.query.name || 'Grupa projektowa';
     
+    // Initialize supervisor status as false, to be verified from the server
+    this.isSupervisor = false;
+    
     console.log('ChaptersPreview initialized with projectId:', this.projectId, 'Group name:', this.groupName);
+    console.log('Is promoter (initial):', this.isPromoter, 'Is supervisor (initial): false - will verify from server');
+    
+    // Verify supervisor status if user is a promoter
+    if (this.isPromoter && this.projectId) {
+      this.verifySupervisorStatus();
+    }
     
     if (this.userId) {
       this.fetchFiles();
@@ -211,6 +228,84 @@ export default {
 
     goBack() {
       this.$router.push({ name: 'GroupsPanel' });
+    },
+
+    async verifySupervisorStatus() {
+      this.isVerifying = true;
+      
+      if (!this.isPromoter) {
+        this.isVerifying = false;
+        return; // No need to verify for non-promoters
+      }
+      
+      if (!this.projectId) {
+        console.warn('Cannot verify supervisor status: missing project ID');
+        // For safety, if we can't verify, we set supervisor status to false
+        this.isSupervisor = false;
+        this.isVerifying = false;
+        return;
+      }
+      
+      try {
+        console.log('Verifying if user is supervisor for project:', this.projectId);
+        // Use the groups/all endpoint to get all groups with their supervisors
+        const response = await axios.get('/api/v1/view/groups/all');
+        
+        if (response.data && response.data.dtos && Array.isArray(response.data.dtos)) {
+          const allGroups = response.data.dtos;
+          console.log('All groups data:', allGroups);
+          
+          // Find the group with the matching project_id
+          const targetGroup = allGroups.find(group => 
+            group.project_id === Number(this.projectId) || 
+            group.project_id === this.projectId
+          );
+          
+          if (targetGroup) {
+            console.log('Found target group:', targetGroup);
+            
+            const supervisorId = targetGroup.supervisor?.id;
+            const userId = Number(authStore.userId);
+            
+            console.log('Group supervisor ID:', supervisorId, 'Current user ID:', userId);
+            
+            // Update supervisor status based on actual project data
+            const isActualSupervisor = supervisorId === userId;
+            
+            if (this.isSupervisor !== isActualSupervisor) {
+              console.warn(`Supervisor status mismatch - URL param: ${this.isSupervisor}, Actual: ${isActualSupervisor}`);
+              this.isSupervisor = isActualSupervisor;
+              
+              if (!isActualSupervisor) {
+                this.errorMessage = 'Nie jesteś promotorem tej grupy. Masz ograniczone uprawnienia.';
+                setTimeout(() => {
+                  this.errorMessage = '';
+                }, 5000);
+              }
+            }
+          } else {
+            console.warn('Group not found with project ID:', this.projectId);
+            this.isSupervisor = false;
+            this.errorMessage = 'Grupa nie została znaleziona. Dostęp został ograniczony.';
+            setTimeout(() => {
+              this.errorMessage = '';
+            }, 5000);
+          }
+        } else {
+          console.warn('Unexpected response format from groups/all:', response.data);
+          this.isSupervisor = false;
+        }
+      } catch (error) {
+        console.error('Error verifying project supervisor:', error);
+        // For safety, if we can't verify, we set supervisor status to false
+        this.isSupervisor = false;
+        this.errorMessage = 'Nie można zweryfikować uprawnień. Dostęp został ograniczony.';
+        setTimeout(() => {
+          this.errorMessage = '';
+        }, 5000);
+      } finally {
+        this.isVerifying = false;
+      }
     },
 
     getStudentDisplayName(student) {
@@ -415,6 +510,17 @@ export default {
     },
 
     async uploadFile() {
+      // Re-verify supervisor status before uploading
+      if (this.isPromoter) {
+        await this.verifySupervisorStatus();
+      }
+      
+      // Check if the promoter is the supervisor of this group
+      if (this.isPromoter && !this.isSupervisor) {
+        this.errorMessage = 'Nie masz uprawnień do przesyłania plików tej grupie. Możesz przesyłać pliki tylko grupom, których jesteś promotorem.';
+        return;
+      }
+      
       const file = this.selectedFile;
       if (!file) {
           this.errorMessage = 'Nie wybrano pliku.';
@@ -546,6 +652,17 @@ export default {
   },
 
   async shareOneNoteLink() {
+    // Re-verify supervisor status before sharing
+    if (this.isPromoter) {
+      await this.verifySupervisorStatus();
+    }
+    
+    // Check if the promoter is the supervisor of this group
+    if (this.isPromoter && !this.isSupervisor) {
+      this.errorMessage = 'Nie masz uprawnień do udostępniania linków tej grupie. Możesz udostępniać linki tylko grupom, których jesteś promotorem.';
+      return;
+    }
+    
     if (!this.oneNoteLink) {
       this.errorMessage = 'Proszę wprowadzić link OneNote.';
       return;
@@ -740,7 +857,10 @@ export default {
       }
       
       console.log(`Navigating to checklist with chapter version ID: ${file.chapterVersionId}`);
-      this.$router.push({ name: 'FileChecklist', params: { chapterVersionId: file.chapterVersionId } });
+      this.$router.push({ 
+        name: 'FileChecklist', 
+        params: { chapterVersionId: file.chapterVersionId }
+      });
     },
     
     goToStudentChecklist() {
@@ -795,6 +915,17 @@ export default {
     },
     
     async saveComment() {
+      // Re-verify supervisor status before saving
+      if (this.isPromoter) {
+        await this.verifySupervisorStatus();
+      }
+      
+      // Check if the promoter is the supervisor of this group
+      if (this.isPromoter && !this.isSupervisor) {
+        this.errorMessage = 'Nie masz uprawnień do dodawania komentarzy do plików tej grupy. Możesz komentować tylko pliki grup, których jesteś promotorem.';
+        return;
+      }
+      
       if (!this.selectedFileForComment) {
         this.errorMessage = 'Brak pliku. Nie można zapisać komentarza.';
         return;
@@ -1237,6 +1368,15 @@ export default {
   color: #6c757d;
   font-size: 0.9rem;
   margin-bottom: 1rem;
+}
+
+.warning-message {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ffeeba;
 }
 
 .onenote-link {

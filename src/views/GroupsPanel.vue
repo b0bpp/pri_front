@@ -53,12 +53,17 @@
         <tbody>
           <tr v-for="group in filteredGroups" :key="group.project_id" 
               class="group-row" 
-              :class="{'user-group': isUserInGroup(group), 'restricted-group': !isUserInGroup(group) && !isPromoter}"
+              :class="{
+                'user-group': isUserInGroup(group), 
+                'restricted-group': !isUserInGroup(group) && !isPromoter,
+                'supervisor-group': isPromoter && isGroupSupervisor(group)
+              }"
               @click="selectGroup(group)">
             <td class="group-name">
               <div class="name-cell">
                 <span class="project-name">{{ group.name }}</span>
                 <span v-if="isUserInGroup(group) && !isPromoter" class="member-badge">Twoja grupa</span>
+                <span v-if="isPromoter && isGroupSupervisor(group)" class="supervisor-badge">Twoja grupa</span>
               </div>
             </td>
             <td class="supervisor-cell">
@@ -79,9 +84,17 @@
                   {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca dyplomowa') : 'Brak dostępu' }}
                 </button>
                 
-                <button v-if="isPromoter && isThesisAccepted(group)" 
+                <button v-if="isPromoter && isThesisAccepted(group) && isGroupSupervisor(group)" 
                         class="action-btn secondary copy-btn" 
                         @click.stop="viewThesisDetails(group)">
+                  <i class="icon-copy"></i>
+                  Kopiuj elementy
+                </button>
+                
+                <button v-if="isPromoter && isThesisAccepted(group) && !isGroupSupervisor(group)"
+                        class="action-btn secondary copy-btn disabled-btn"
+                        disabled
+                        title="Możesz edytować tylko grupy, których jesteś promotorem">
                   <i class="icon-copy"></i>
                   Kopiuj elementy
                 </button>
@@ -271,6 +284,16 @@ export default {
       return this.userGroups.includes(groupId);
     },
     
+    isGroupSupervisor(group) {
+      if (!this.isPromoter || !group || !group.supervisor) {
+        return false;
+      }
+      
+      // Check if the current user (promoter) is the supervisor of this group
+      // The supervisor ID in the API response is what we need to check against authStore.userId
+      return group.supervisor.id === Number(authStore.userId);
+    },
+    
     sortBy(field) {
       if (this.sortField === field) {
         this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
@@ -336,19 +359,25 @@ export default {
       });
       
       const isThesisAccepted = this.isThesisAccepted(group);
+      const isSupervisor = this.isGroupSupervisor(group);
       console.log('Is thesis accepted:', isThesisAccepted, 'Redirecting to:', isThesisAccepted ? 'ChaptersPreview' : 'Thesis');
+      console.log('Is current promoter the supervisor:', isSupervisor);
       
       if (isThesisAccepted) {
         this.$router.push({ 
           name: 'ChaptersPreview', 
           params: { id: group.project_id.toString() },
-          query: { name: group.name || 'Unknown Group' }
+          query: { 
+            name: group.name || 'Unknown Group'
+          }
         });
       } else {
         this.$router.push({ 
           name: 'Thesis', 
           params: { groupId: group.project_id.toString() },
-          query: { name: group.name || 'Unknown Group' }
+          query: { 
+            name: group.name || 'Unknown Group'
+          }
         });
       }
     },
@@ -367,13 +396,6 @@ export default {
         return;
       }
 
-      /*try {
-        const refreshedGroup = await this.refreshThesisStatus(group);
-        group = refreshedGroup || group;
-      } catch (error) {
-        console.warn('Failed to refresh thesis status:', error);
-      }*/
-
       console.log('Navigating to timeline with project_id:', group.project_id);
       console.log('Group details:', {
         name: group.name,
@@ -382,13 +404,18 @@ export default {
       });
 
       const isThesisAccepted = this.isThesisAccepted(group);
+      const isSupervisor = this.isGroupSupervisor(group);
       console.log('Is thesis accepted:', isThesisAccepted, 'Redirecting to:', isThesisAccepted ? 'ChaptersPreview' : 'Thesis');
+      console.log('Is current promoter the supervisor:', isSupervisor);
 
       if (isThesisAccepted) {
         this.$router.push({
           name: 'Timeline',
           params: { thesisId: group.project_id.toString() },
-          query: { name: group.name || 'Unknown Group' }
+          query: { 
+            name: group.name || 'Unknown Group',
+            isSupervisor: isSupervisor.toString()
+          }
         });
       }
     },
@@ -477,6 +504,16 @@ export default {
         return;
       }
       
+      // Check if the current promoter is the supervisor of this group
+      if (!this.isGroupSupervisor(group)) {
+        console.warn('Promoter attempted to access thesis details of a group they are not supervising:', group.project_id);
+        this.errorMessage = 'Możesz edytować tylko grupy, których jesteś promotorem.';
+        setTimeout(() => {
+          this.errorMessage = '';
+        }, 5000);
+        return;
+      }
+      
       console.log('Navigating to thesis details view for group:', group.name);
       this.$router.push({ 
         name: 'ThesisCopy', 
@@ -492,15 +529,21 @@ export default {
       try {
         this.loading = true;
         this.errorMessage = ''; 
-        const response = await axios.post('/api/v1/reload-groups');
+        
+ 
+        const supervisorId = authStore.userId;
+        
+        if (!supervisorId) {
+          throw new Error('Brak ID promotora. Zaloguj się ponownie.');
+        }
+
+        const response = await axios.post('/api/v1/reloadGroups', {
+          supervisordUserDataId: supervisorId
+        });
+        
         console.log('Groups reload response:', response.data);
         
-        if (response.data && response.data.success) {        
-          alert('Grupy zostały odświeżone pomyślnie!');
-          await this.fetchGroups();
-        } else {
-          throw new Error(response.data?.message || 'Nieznany błąd podczas odświeżania grup');
-        }
+        //Refresh group list
         await this.fetchGroups();
         
       } catch (error) {
@@ -836,6 +879,21 @@ export default {
   border-radius: 0.25rem;
   margin-left: 0.5rem;
   vertical-align: middle;
+}
+
+.supervisor-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  background-color: #10b981;
+  color: white;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.supervisor-group {
+  background-color: rgba(16, 185, 129, 0.05);
 }
 
 .disabled-btn {

@@ -6,7 +6,7 @@
         <input
           id="title"
           v-model="chapter.title"
-          :readonly="chapterAccepted"
+          :readonly="readonly || chapterAccepted"
           class="form-control"
           required
         />
@@ -16,7 +16,7 @@
         <input
           id="titleEng"
           v-model="chapter.title_en"
-          :readonly="chapterAccepted"
+          :readonly="readonly || chapterAccepted"
           class="form-control"
           required
         />
@@ -26,7 +26,7 @@
         <textarea
           id="description"
           v-model="chapter.description"
-          :readonly="chapterAccepted"
+          :readonly="readonly || chapterAccepted"
           class="form-control"
           required
         ></textarea>
@@ -36,7 +36,7 @@
         <textarea
           id="descriptionEng"
           v-model="chapter.description_en"
-          :readonly="chapterAccepted"
+          :readonly="readonly || chapterAccepted"
           class="form-control"
           required
         ></textarea>
@@ -46,30 +46,22 @@
         <textarea
           id="promoterComment"
           v-model="chapter.supervisor_comment"
-          :readonly="!isPromoter || chapterAccepted"
+          :readonly="readonly || !isPromoter || chapterAccepted"
           class="form-control"
         ></textarea>
       </div>
-      <button v-if="!chapterAccepted" type="submit" class="btn btn-primary">Zapisz rozdział</button>
+      <button v-if="!chapterAccepted && !readonly" type="submit" class="btn btn-primary">Zapisz rozdział</button>
       <button 
-        v-if="isPromoter && !chapterAccepted"
+        v-if="isPromoter && !chapterAccepted && !readonly"
         type="button"
         class="btn btn-success"
         @click="acceptChapter"
       >
         Akceptuj rozdział
       </button>
-      <button 
-        v-if="isPromoter && !chapterAccepted"
-        type="button"
-        class="btn btn-primary save-comment-btn"
-        @click="savePromoterComment"
-      >
-        Zapisz tylko komentarz
-      </button>
       <p v-if="chapterAccepted" class="accepted-message">
         Rozdział został zaakceptowany i nie można go już edytować.
-      </p>    
+      </p>
     </form>
     <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
@@ -93,6 +85,7 @@ export default {
       isPromoter: authStore.isPromoter,
       userId: authStore.userId,
       internalGroupId: null,
+      readonly: false,
       chapter: {
         title: '',
         title_en: '',
@@ -118,6 +111,17 @@ export default {
     }
   },
   methods: {
+    setReadOnly(value) {
+      // This is the missing method that's being called from Thesis.vue
+      console.log('Setting read-only mode:', value);
+      this.readonly = value;
+    },
+    
+    setGroupId(groupId) {
+      this.internalGroupId = groupId;
+      console.log('Setting group ID:', groupId);
+    },
+    
     async loadChapter(chapterId) {
       if (!chapterId) {
         this.errorMessage = 'Brak identyfikatora rozdziału.';
@@ -270,6 +274,13 @@ export default {
           const chapterResponse = await axios.get(`/api/v1/chapter/${this.chapterId}`);
           currentServerData = chapterResponse.data;
           console.log('Current chapter data from server:', currentServerData);
+          
+          // Validate that all required fields are not null or empty
+          if (!currentServerData.title || !currentServerData.title_en || 
+              !currentServerData.description || !currentServerData.description_en) {
+            this.errorMessage = 'Nie można zaakceptować rozdziału - wszystkie pola (poza komentarzem) muszą być zapisane w bazie danych.';
+            return;
+          }
         } catch (fetchError) {
           console.error('Error fetching current chapter data:', fetchError);
           this.errorMessage = 'Nie udało się pobrać aktualnych danych rozdziału.';
@@ -318,48 +329,6 @@ export default {
     async rejectChapter() {
       this.errorMessage = 'Funkcja odrzucania rozdziału jest obecnie niedostępna.';
       setTimeout(() => (this.errorMessage = ''), 3000);
-    },
-    
-    async savePromoterComment() {
-      try {
-        if (!this.chapterId) {
-          this.errorMessage = 'Brak identyfikatora rozdziału. Najpierw zapisz rozdział.';
-          return;
-        }
-
-        let currentServerData;
-        try {
-          const chapterResponse = await axios.get(`/api/v1/chapter/${this.chapterId}`);
-          currentServerData = chapterResponse.data;
-          console.log('Current chapter data from server:', currentServerData);
-        } catch (fetchError) {
-          console.error('Error fetching current chapter data:', fetchError);
-          this.errorMessage = 'Nie udało się pobrać aktualnych danych rozdziału. Komentarz może nie zostać prawidłowo zapisany.';
-          return;
-        }
-
-        const updatedChapterData = {
-          user_id: currentServerData.user_id || this.chapter.user_id || this.userId,
-          project_id: parseInt(this.internalGroupId || this.groupId),
-          title: currentServerData.title || this.chapter.title,
-          title_en: currentServerData.title_en || this.chapter.title_en, 
-          description: currentServerData.description || this.chapter.description,
-          description_en: currentServerData.description_en || this.chapter.description_en,
-          supervisor_comment: this.chapter.supervisor_comment,
-          approval_status: currentServerData.approval_status || this.chapter.approval_status
-        };
-        
-        console.log('Saving chapter with updated promoter comment:', updatedChapterData);
-        const response = await axios.patch(`/api/v1/chapter/${this.chapterId}`, updatedChapterData);
-        console.log('Comment saved response:', response.data);
-        
-        this.successMessage = 'Komentarz promotora został zapisany.';
-        this.errorMessage = '';
-      } catch (error) {
-        console.error('Błąd przy zapisywaniu komentarza promotora:', error);
-        this.errorMessage = 'Nie udało się zapisać komentarza promotora.';
-      }
-      setTimeout(() => (this.successMessage = ''), 2000);
     }
   }
 };

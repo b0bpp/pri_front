@@ -30,7 +30,10 @@ const routes = [
     path: '/checklist/file/:chapterVersionId',
     name: 'FileChecklist',
     component: Checklist,
-    props: true,
+    props: route => ({
+      chapterVersionId: route.params.chapterVersionId,
+      ...route.query
+    }),
   },
   {
     path: '/thesis/:groupId', 

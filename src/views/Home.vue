@@ -3,8 +3,12 @@
     <div class="card">
       <h2 class="title">Wybierz rolę</h2>
       <div class="button-group">
-        <button class="role-btn" @click="loginAsStudent">Zaloguj jako Student</button>
-        <button class="role-btn" @click="loginAsPromoter">Zaloguj jako Promotor</button>
+        <button class="role-btn" @click="loginAsStudent">Zaloguj jako Student: Tomasz Wasyłyk</button>
+        <button class="role-btn" @click="loginAsPromoter">Zaloguj jako Promotor: Patryk Żywica</button>
+      </div>
+      <div class="button-group mt-10">
+        <button class="role-btn alt-btn" @click="loginAsAlternateStudent">Zaloguj jako Student: Katarzyna Strzyżewska</button>
+        <button class="role-btn alt-btn" @click="loginAsAlternatePromoter">Zaloguj jako Promotor: Marcin Szczepański</button>
       </div>
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
     </div>
@@ -32,9 +36,9 @@ export default {
     async loginAsStudent() {
       this.errorMessage = '';
       try {
-        const response = await axios.get('/api/v1/students');
+        const response = await axios.get('/api/v1/users');
         const students = response.data;
-        const student = students.find(s => s.id === 28);
+        const student = students.find(s => s.id === 30);
 
         if (!student) {
           throw new Error('Student not found');
@@ -48,7 +52,7 @@ export default {
           throw new Error('Student name data is incomplete');
         }
 
-        authStore.setUser(false, 28, firstName, lastName);
+        authStore.setUser(false, 30, firstName, lastName);
         console.log('Student login successful:', authStore);
         this.router.push('/groups-panel');
       } catch (error) {
@@ -81,6 +85,62 @@ export default {
         this.router.push('/groups-panel');
       } catch (error) {
         console.error('Error logging in as promoter:', error);
+        this.errorMessage = `Nie udało się zalogować jako promotor: ${error.message}`;
+      }
+    },
+    
+    async loginAsAlternateStudent() {
+      this.errorMessage = '';
+      try {
+        const response = await axios.get('/api/v1/users');
+        const students = response.data;
+        const student = students.find(s => s.id === 28);
+
+        if (!student) {
+          throw new Error('Student not found');
+        }
+
+        let firstName = student.fName || student.fname || student.firstName || student.f_name || '';
+        let lastName = student.lName || student.lname || student.lastName || student.l_name || '';
+
+        if (!firstName || !lastName) {
+          console.warn('Student data:', student);
+          throw new Error('Student name data is incomplete');
+        }
+
+        authStore.setUser(false, 28, firstName, lastName);
+        console.log('Alternate student login successful:', authStore);
+        this.router.push('/groups-panel');
+      } catch (error) {
+        console.error('Error logging in as alternate student:', error);
+        this.errorMessage = `Nie udało się zalogować jako student: ${error.message}`;
+      }
+    },
+    
+    async loginAsAlternatePromoter() {
+      this.errorMessage = '';
+      try {
+        const response = await axios.get('/api/v1/users');
+        const students = response.data;
+        const promoter = students.find(s => s.id === 32); 
+
+        if (!promoter) {
+          throw new Error('Promoter not found');
+        }
+
+        let firstName = promoter.fName || promoter.fname || promoter.firstName || promoter.f_name || '';
+        let lastName = promoter.lName || promoter.lname || promoter.lastName || promoter.l_name || '';
+
+        if (!firstName || !lastName) {
+          console.warn('Promoter data:', promoter);
+          throw new Error('Promoter name data is incomplete');
+        }
+
+        authStore.setUser(true, 32, firstName, lastName);
+        console.log('Alternate promoter login successful:', authStore);
+        this.router.push('/groups-panel');
+      } catch (error) {
+        console.error('Error logging in as alternate promoter:', error);
         this.errorMessage = `Nie udało się zalogować jako promotor: ${error.message}`;
       }
     }
@@ -139,5 +199,17 @@ export default {
   text-align: center;
   margin-top: 1rem;
   font-size: 0.9rem;
+}
+
+.mt-10 {
+  margin-top: 1rem;
+}
+
+.alt-btn {
+  background-color: #6c757d;
+}
+
+.alt-btn:hover {
+  background-color: #5a6268;
 }
 </style>
