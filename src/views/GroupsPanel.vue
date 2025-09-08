@@ -405,18 +405,40 @@ export default {
 
       const isThesisAccepted = this.isThesisAccepted(group);
       const isSupervisor = this.isGroupSupervisor(group);
-      console.log('Is thesis accepted:', isThesisAccepted, 'Redirecting to:', isThesisAccepted ? 'ChaptersPreview' : 'Thesis');
+      console.log('Is thesis accepted:', isThesisAccepted);
       console.log('Is current promoter the supervisor:', isSupervisor);
 
       if (isThesisAccepted) {
-        this.$router.push({
-          name: 'Timeline',
-          params: { thesisId: group.project_id.toString() },
-          query: { 
-            name: group.name || 'Unknown Group',
-            isSupervisor: isSupervisor.toString()
+        try {
+          const response = await axios.get(`/api/v1/thesis/byProjectId/${group.project_id}`);
+          const thesisId = response.data.id;
+          
+          if (!thesisId) {
+            console.error('No thesis ID found for project ID:', group.project_id);
+            this.errorMessage = 'Nie udało się znaleźć pracy dyplomowej dla tej grupy.';
+            setTimeout(() => {
+              this.errorMessage = '';
+            }, 5000);
+            return;
           }
-        });
+          
+          console.log('Retrieved thesis ID:', thesisId, 'for project ID:', group.project_id);
+
+          this.$router.push({
+            name: 'Timeline',
+            params: { thesisId: thesisId.toString() },
+            query: { 
+              name: group.name || 'Unknown Group',
+              isSupervisor: isSupervisor.toString()
+            }
+          });
+        } catch (error) {
+          console.error('Error fetching thesis ID:', error);
+          this.errorMessage = 'Nie udało się pobrać danych pracy dyplomowej.';
+          setTimeout(() => {
+            this.errorMessage = '';
+          }, 5000);
+        }
       }
     },
     

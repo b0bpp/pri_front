@@ -16,14 +16,24 @@ const error = ref(null);
 const timelineData = ref(null);
 const fetchTimeline = async () => {
   try {
+    console.log('Fetching timeline for thesis ID:', props.thesisId);
+    
+    // Fetch the timeline using the thesis ID
     const response = await axios.get(`/api/v1/timeline/view/byThesisId/${props.thesisId}`);
+    
+    if (!response.data) {
+      console.error('No timeline data returned for thesis ID:', props.thesisId);
+      error.value = 'No timeline data available';
+      return;
+    }
+    
     timelineData.value = response.data;
-    console.log('axios',timelineData._rawValue);
-    /*timelineData._rawValue.chapters.forEach(chapter => {
-      chapter.versions.forEach(version => {
-        console.log('Version Date:', new Date(version.upload_date_time).toISOString().split('T')[0]);
-      });
-    });*/
+    console.log('Timeline data loaded:', timelineData.value);
+    
+    // After data is loaded, process it
+    if (timelineData.value) {
+      processDataEntries();
+    }
   } catch (err) {
     error.value = 'Failed to fetch timeline data';
     console.error('Error fetching timeline:', err);
@@ -56,10 +66,16 @@ function onMouseleaveTimeline () {
 
 //Goes through acquired JSON and using pushItem and pushGroup, populates Vue Timeline Chart arrays. Is booted on app mount.
 function processDataEntries() {
+  if (!timelineData.value || !timelineData._rawValue) {
+    console.error('Timeline data is not available');
+    error.value = 'Timeline data is not available';
+    return;
+  }
+  
   const thesis_supervisor_id = timelineData._rawValue.supervisor_user_data_id;
   //Test Entry to test supervisor status. Other timeline entries do not react to it, as they react strictly to entries in timelineData
   //pushItem(items, 999, 28, 1756737432000, 'Testname', 'Testcomment', 'Testtally', 'status-supervisor')
-  timelineData._rawValue.chapters.forEach(chapter =>{
+  timelineData._rawValue.chapters.forEach(chapter => {
     const author_id = chapter.author.user_data_id;
     const author_name = `${chapter.author.user_data_first_name} ${chapter.author.user_data_last_name}`;
     let was_reviewed = null;
@@ -72,14 +88,14 @@ function processDataEntries() {
         let status = null;
         if (isSupervisor(thesis_supervisor_id, version.uploader.user_data_id)) {
           was_reviewed = 1;
-          status = 'status-supervisor'
+          status = 'status-supervisor';
         }
         else {
           if (was_reviewed === 1) {
-            status = 'status-student-reviewed'
+            status = 'status-student-reviewed';
           }
           else {
-            status = 'status-student-pending'
+            status = 'status-student-pending';
           }
         }
         pushItem(
@@ -148,7 +164,7 @@ function pushGroup (group_array_ref, student_id, name_of_student){
   group_array_ref.value.push({
     id: student_id,
     label: name_of_student
-  })
+  });
   console.log('Adding group:', {
     id: student_id,
     label: name_of_student
@@ -198,11 +214,9 @@ function wasReviewed(version_entry_id, version_upload_date) {
 
 onMounted(async () => {
   await fetchTimeline();
-  processDataEntries();
+  // processDataEntries is now called inside fetchTimeline after data is loaded
 });
 </script>
-
-
 
 <template>
   <div class="wrapper">
@@ -227,8 +241,6 @@ onMounted(async () => {
     </div>
   </div>
 
-
-
   <div class="wrapper">
     <div class="card" v-if="matched_json_chapter && matched_json_version">
       <div class="selected-item">
@@ -247,39 +259,7 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-
 </template>
-
-
-
-<script>
-import authStore from '/src/stores/authStore';
-import { useRouter } from 'vue-router';
-
-export default {
-  name: 'Timeline',
-  data() {
-    return {
-      chapters: [],
-      errorMessage: ''
-    };
-  },
-  setup() {
-    const router = useRouter();
-
-    return { router };
-  },
-  props: ['thesisId'],
-  methods: {
-    myMethod () {
-      this.$http.post(
-          '/api/items',
-          {name: "my item"}
-      );
-    },
-  }
-};
-</script>
 
 <style scoped>
 .wrapper {
@@ -351,8 +331,6 @@ export default {
   opacity: 0.5;
 }
 
-
-
 :deep(.status-supervisor) {
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
@@ -379,5 +357,4 @@ export default {
   border-radius: 0 !important;
   border-bottom-color: #63cc07;
 }
-
 </style>
