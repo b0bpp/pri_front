@@ -108,7 +108,7 @@
                         class="action-btn primary"
                         @click.stop="viewTimeline(group)"
                         :disabled="!isGroupSupervisor(group) && isPromoter"
-                        :class="{'disabled-btn': !isGroupSupervisor(group)}">
+                        :class="{'disabled-btn': !isGroupSupervisor(group) && isPromoter}">
                   <i class="icon-timeline"></i>
                   {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'View timeline' : 'Brak dostępu' }}
                 </button>
