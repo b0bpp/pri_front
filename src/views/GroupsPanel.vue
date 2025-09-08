@@ -104,10 +104,11 @@
                   Kopiuj elementy
                 </button>
 
-                <button class="action-btn primary"
+                <button v-if="isThesisAccepted(group) && (isUserInGroup(group) || isPromoter)"
+                        class="action-btn primary"
                         @click.stop="viewTimeline(group)"
-                        :disabled="!isUserInGroup(group) && !isPromoter && !isThesisAccepted(group)"
-                        :class="{'disabled-btn': !isUserInGroup(group) && !isPromoter}">
+                        :disabled="!isGroupSupervisor(group) && isPromoter"
+                        :class="{'disabled-btn': !isGroupSupervisor(group)}">
                   <i class="icon-timeline"></i>
                   {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'View timeline' : 'Brak dostępu' }}
                 </button>
@@ -284,7 +285,7 @@ export default {
     },
     
     isUserInGroup(group) {
-      if (this.isPromoter) return true; 
+      if (this.isPromoter) return true;
       
       const groupId = group.project_id;
       return this.userGroups.includes(groupId);
