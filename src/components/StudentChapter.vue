@@ -8,7 +8,6 @@
           v-model="chapter.title"
           :readonly="readonly || chapterAccepted"
           class="form-control"
-          required
         />
       </div>
       <div class="form-group">
@@ -18,7 +17,6 @@
           v-model="chapter.title_en"
           :readonly="readonly || chapterAccepted"
           class="form-control"
-          required
         />
       </div>
       <div class="form-group">
@@ -28,7 +26,6 @@
           v-model="chapter.description"
           :readonly="readonly || chapterAccepted"
           class="form-control"
-          required
         ></textarea>
       </div>
       <div class="form-group">
@@ -38,7 +35,6 @@
           v-model="chapter.description_en"
           :readonly="readonly || chapterAccepted"
           class="form-control"
-          required
         ></textarea>
       </div>
       <div class="form-group">
@@ -112,7 +108,6 @@ export default {
   },
   methods: {
     setReadOnly(value) {
-      // This is the missing method that's being called from Thesis.vue
       console.log('Setting read-only mode:', value);
       this.readonly = value;
     },
@@ -215,11 +210,11 @@ export default {
         const chapterData = {
           user_id: this.chapter.user_id || this.userId,
           project_id: parseInt(projectId),
-          title: this.chapter.title,
-          title_en: this.chapter.title_en,
-          description: this.chapter.description,
-          description_en: this.chapter.description_en,
-          supervisor_comment: this.chapter.supervisor_comment
+          title: this.chapter.title || '',
+          title_en: this.chapter.title_en || '',
+          description: this.chapter.description || '',
+          description_en: this.chapter.description_en || '',
+          supervisor_comment: this.chapter.supervisor_comment || ''
         };
         
         console.log('Saving chapter data:', chapterData);
@@ -274,11 +269,10 @@ export default {
           const chapterResponse = await axios.get(`/api/v1/chapter/${this.chapterId}`);
           currentServerData = chapterResponse.data;
           console.log('Current chapter data from server:', currentServerData);
-          
-          // Validate that all required fields are not null or empty
+
           if (!currentServerData.title || !currentServerData.title_en || 
               !currentServerData.description || !currentServerData.description_en) {
-            this.errorMessage = 'Nie można zaakceptować rozdziału - wszystkie pola (poza komentarzem) muszą być zapisane w bazie danych.';
+            this.errorMessage = 'Nie można zaakceptować rozdziału - wszystkie pola (poza komentarzem) muszą być wypełnione w bazie danych.';
             return;
           }
         } catch (fetchError) {

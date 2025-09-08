@@ -412,11 +412,11 @@ export default {
         }
 
         const thesisData = {
-          title: this.thesis.title,
-          title_en: this.thesis.title_en,
-          description: this.thesis.description,
-          description_en: this.thesis.description_en,
-          supervisor_comment: (this.isPromoter && this.isSupervisor) ? this.thesis.supervisor_comment : (currentServerData.supervisor_comment || this.thesis.supervisor_comment)
+          title: this.thesis.title || '',
+          title_en: this.thesis.title_en || '',
+          description: this.thesis.description || '',
+          description_en: this.thesis.description_en || '',
+          supervisor_comment: (this.isPromoter && this.isSupervisor) ? this.thesis.supervisor_comment || '' : (currentServerData.supervisor_comment || this.thesis.supervisor_comment || '')
         };
         
         console.log('Saving thesis data:', thesisData);
@@ -479,7 +479,6 @@ export default {
 
     async acceptThesis() {
       try {
-        // Re-verify supervisor status before accepting
         if (this.isPromoter) {
           await this.verifySupervisorStatus();
         }
@@ -494,17 +493,15 @@ export default {
           this.errorMessage = 'Brak identyfikatora pracy. Najpierw zapisz pracę.';
           return;
         }
-        
-        // Fetch current thesis data from server to validate
+
         try {
           const thesisResponse = await axios.get(`/api/v1/thesis/${this.thesisId}`);
           const currentServerData = thesisResponse.data;
           console.log('Current thesis data from server:', currentServerData);
-          
-          // Validate that all required fields are not null or empty in the server data
+
           if (!currentServerData.title || !currentServerData.title_en || 
               !currentServerData.description || !currentServerData.description_en) {
-            this.errorMessage = 'Nie można zaakceptować pracy - wszystkie pola (poza komentarzem) muszą być zapisane w bazie danych.';
+            this.errorMessage = 'Nie można zaakceptować pracy - wszystkie pola (poza komentarzem) muszą być wypełnione w bazie danych.';
             return;
           }
         } catch (fetchError) {
@@ -532,7 +529,7 @@ export default {
         // Navigate to Groups Panel after successful thesis acceptance
         setTimeout(() => {
           this.$router.push({ name: 'GroupsPanel' });
-        }, 1000); // Short delay to allow the user to see the success message
+        }, 1000); 
       } catch (error) {
         console.error('Błąd przy akceptacji pracy:', error);
         this.errorMessage = 'Nie udało się zaakceptować pracy.';
@@ -645,7 +642,7 @@ export default {
     },
 
     viewChapter(chapter) {
-      // Regular view (with edit rights)
+
       this.selectedChapterId = chapter.chapter_id || chapter.id;
       this.editingOwnChapter = chapter.user_id === this.userId || chapter.user_data_id === this.userId;
       this.readOnlyMode = false;
@@ -659,8 +656,7 @@ export default {
         if (this.$refs.chapterComponent) {
           this.$refs.chapterComponent.loadChapter(this.selectedChapterId);
           this.$refs.chapterComponent.setGroupId(this.projectId || this.$route.params.groupId);
-          
-          // If promoter but not supervisor, make sure they can't edit
+
           if (this.isPromoter && !this.isSupervisor) {
             this.$refs.chapterComponent.setReadOnly(true);
           }
@@ -669,7 +665,7 @@ export default {
     },
     
     viewChapterReadOnly(chapter) {
-      // Read-only view for non-supervisor promoters
+
       this.selectedChapterId = chapter.chapter_id || chapter.id;
       this.editingOwnChapter = false;
       this.readOnlyMode = true;
