@@ -32,6 +32,11 @@
       <p class="error-message">{{ errorMessage }}</p>
       <button class="retry-btn" @click="fetchGroups">Spróbuj ponownie</button>
     </div>
+    
+    <!-- Success Message -->
+    <div v-if="successMessage" class="success-state">
+      <p class="success-message">{{ successMessage }}</p>
+    </div>
 
     <!-- Tabela grup -->
     <div v-else class="table-container">
@@ -132,6 +137,7 @@ export default {
       groups: [],
       loading: false,
       errorMessage: '',
+      successMessage: '',
       searchTerm: '',
       selectedSupervisor: '',
       sortField: 'name',
@@ -552,7 +558,6 @@ export default {
         this.loading = true;
         this.errorMessage = ''; 
         
- 
         const supervisorId = authStore.userId;
         
         if (!supervisorId) {
@@ -560,12 +565,16 @@ export default {
         }
 
         const response = await axios.post('/api/v1/reloadGroups', {
-          supervisordUserDataId: supervisorId
+          supervisord_user_data_id: supervisorId
         });
         
         console.log('Groups reload response:', response.data);
         
-        //Refresh group list
+        this.successMessage = 'Grupy zostały odświeżone pomyślnie. Wszystkie prace i rozdziały zostały wyczyszczone.';
+        setTimeout(() => {
+          this.successMessage = '';
+        }, 5000);
+        
         await this.fetchGroups();
         
       } catch (error) {
@@ -658,13 +667,17 @@ export default {
   box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.1);
 }
 
-.loading-state, .error-state {
+.loading-state, .error-state, .success-state {
   text-align: center;
   padding: 3rem 2rem;
   background-color: white;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 1.5rem;
+}
+
+.success-state {
+  padding: 1rem 2rem;
 }
 
 .retry-btn {
@@ -882,6 +895,12 @@ export default {
 .error-message {
   color: #ef4444;
   margin-bottom: 1rem;
+}
+
+.success-message {
+  color: #10b981;
+  margin-bottom: 1rem;
+  font-weight: 500;
 }
 
 .user-group {
