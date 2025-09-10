@@ -71,7 +71,7 @@ function processDataEntries() {
     error.value = 'Timeline data is not available';
     return;
   }
-  
+
   const thesis_supervisor_id = timelineData._rawValue.supervisor_user_data_id;
   //Test Entry to test supervisor status. Other timeline entries do not react to it, as they react strictly to entries in timelineData
   //pushItem(items, 999, 28, 1756737432000, 'Testname', 'Testcomment', 'Testtally', 'status-supervisor')
@@ -86,9 +86,13 @@ function processDataEntries() {
     [...chapter.versions].reverse().forEach(version => {
       if (!itemExistsAlready(items, version.id, Date.parse(version.upload_date_time))) {
         let status = null;
+        let score = null;
         if (isSupervisor(thesis_supervisor_id, version.uploader.user_data_id)) {
           was_reviewed = 1;
           status = 'status-supervisor';
+          score = version.checklist_tally.resolved + '/' + version.checklist_tally.total;
+          console.log('Score is:', score);
+
         }
         else {
           if (was_reviewed === 1) {
@@ -105,7 +109,7 @@ function processDataEntries() {
             Date.parse(version.upload_date_time),
             `${version.uploader.user_data_first_name} ${version.uploader.user_data_last_name}`,
             version.supervisor_comment,
-            version.checklist_tally,
+            score,
             status
         );
       }
@@ -150,7 +154,7 @@ function pushItem(items_array_ref, version_id, group_id, date, uploadedBy, comme
     start: date,
     uploadedBy: uploadedBy,
     comment: comment,
-    score: score,
+    tally: score,
     className: status
   };
   console.log('Adding item:', newItem);
@@ -237,6 +241,11 @@ onMounted(async () => {
             {{ new Date(item.start).toLocaleString() }}
           </div>
         </template>
+        <template #item="{item}">
+          <div class="tally-content">
+            {{ item.tally}}
+          </div>
+        </template>
       </Timeline>
     </div>
   </div>
@@ -250,10 +259,10 @@ onMounted(async () => {
 
         <p><strong>Version Details:</strong></p>
         <div>
-          <p><strong>Uploaded on:</strong> {{ new Date(matched_json_version.upload_date_time).toISOString().split('.')[0] }}</p>
+          <p><strong>Uploaded on:</strong> {{ new Date(new Date(matched_json_version.upload_date_time).getTime() + 7200000).toISOString().replace('T', ' ').split('.')[0]  }}</p>
           <p><strong>Uploaded by:</strong> {{ matched_json_version.uploader.user_data_first_name }} {{ matched_json_version.uploader.user_data_last_name }}</p>
-          <p v-if="matched_json_version.checklist_tally && matched_json_version.checklist_tally !== 'n/a'"><strong>Checklist Tally:</strong>{{ matched_json_version.checklist_tally }}</p>
-          <p v-if="matched_json_version.supervisor_comment && matched_json_version.checklist_tally !== 'n/a'"><strong>Supervisor Comment:</strong>{{ matched_json_version.supervisor_comment }}</p>
+          <p v-if="matched_json_version.uploader.user_data_id == timelineData.supervisor_user_data_id"><strong>Checklist Tally:</strong>{{ matched_json_version.checklist_tally.resolved + '/' + matched_json_version.checklist_tally.total }}</p>
+          <p v-if="matched_json_version.supervisor_comment  !== 'n/a'"><strong>Supervisor Comment:</strong>{{ matched_json_version.supervisor_comment }}</p>
           <p v-if="matched_json_version.file_link"><a :href="matched_json_version.file_link" target="_blank">File Link</a></p>
         </div>
       </div>
@@ -330,29 +339,36 @@ onMounted(async () => {
   padding: 0 4px;
   opacity: 0.5;
 }
+.tally-content{
+  inset: 0;
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 12px;
+}
 
 :deep(.status-supervisor) {
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-top: 18px solid;
-  background: none !important;
-  border-radius: 0 !important;
-  border-top-color: #007bff;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
 }
 
 :deep(.status-student-pending) {
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 18px solid;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-bottom: 27px solid;
   background: none !important;
   border-radius: 0 !important;
   border-bottom-color: #ecac0c;
 }
 
 :deep(.status-student-reviewed) {
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 18px solid;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-bottom: 27px solid;
   background: none !important;
   border-radius: 0 !important;
   border-bottom-color: #63cc07;
