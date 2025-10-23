@@ -2,12 +2,12 @@ name: Build and Publish Vue.js Docker image to GHCR
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
     paths:
       - 'frontend/**'
       - '.github/workflows/build-push-frontend.yml'
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
     paths:
       - 'frontend/**'
       - '.github/workflows/build-push-frontend.yml'
