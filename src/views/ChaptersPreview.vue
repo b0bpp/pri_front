@@ -26,7 +26,7 @@
         <p>Nie jesteś promotorem tej grupy. Możesz przeglądać pliki, ale nie możesz przesyłać nowych plików ani komentować.</p>
       </div>
       
-      <!-- OneNote/Plik dla promotora -->
+      <!-- OneNote/File for promoter -->
       <div v-if="isPromoter && isSupervisor" class="upload-toggle">
         <label class="toggle-option" :class="{ 'active-file': !isLinkMode }">
           <input type="radio" v-model="isLinkMode" :value="false">
@@ -37,19 +37,27 @@
           Link OneNote
         </label>
       </div>        
-      <!-- Wysyłanie Pliku -->
+        <!-- Sending File -->
         <div v-if="(!isPromoter || isSupervisor) && !isLinkMode">
           <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
-          <button 
-            class="btn btn-primary file-btn" 
-            :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
-            @click="uploadFile"
-          >
-            Wyślij plik
-          </button>
-        </div>
-        
-        <!-- OneNote link  -->
+          <div class="upload-buttons">
+            <button 
+              class="btn btn-primary file-btn" 
+              :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
+              @click="uploadFile"
+            >
+              Wyślij plik
+            </button>
+            <button 
+              v-if="!isPromoter"
+              class="btn btn-secondary multi-author-btn" 
+              :disabled="!selectedFile" 
+              @click="openMultiAuthorModal"
+            >
+              Wyślij pracę wieloautorską
+            </button>
+          </div>
+        </div>        <!-- OneNote link  -->
         <div v-if="isLinkMode && isPromoter && isSupervisor" class="link-input-container">
           <input 
             type="text" 
@@ -70,7 +78,7 @@
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
 
-      <!-- Tabela plików -->
+      <!-- Files table -->
       <table class="table" v-if="displayFiles.length > 0">
         <thead>
           <tr>
@@ -100,13 +108,13 @@
         </tbody>
       </table>
 
-      <!-- Brak danych -->
+      <!-- No data -->
       <p v-else-if="isPromoter && selectedStudentId">Brak przesłanych plików dla wybranego studenta.</p>
       <p v-else-if="!isPromoter">Brak przesłanych plików.</p>
       <p v-else>Wybierz studenta, aby zobaczyć pliki.</p>
     </div>
     
-    <!-- Modal dla komentarzy promotora -->
+    <!-- Promoter comments modal -->
     <div class="modal" v-if="showCommentModal">
       <div class="modal-content">
         <div class="modal-header">
@@ -139,6 +147,65 @@
         </div>
       </div>
     </div>
+
+    <!-- Multi author selection modal -->
+    <div class="modal" v-if="showMultiAuthorModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Wybierz współautorów pracy</h3>
+          <button class="modal-close" @click="closeMultiAuthorModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="info-text">
+            Wybierz członków grupy, z którymi chcesz przesłać ten plik. 
+          </p>
+          
+          <div v-if="loadingGroupMembers" class="loading-text">
+            Ładowanie członków grupy...
+          </div>
+          
+          <div v-else-if="groupMembers.length === 0" class="error-text">
+            Nie znaleziono innych członków grupy.
+          </div>
+          
+          <div v-else class="group-members-list">
+            <div 
+              v-for="member in groupMembers" 
+              :key="member.id"
+              class="member-item"
+            >
+              <label class="member-checkbox">
+                <input 
+                  type="checkbox" 
+                  :value="member.id"
+                  v-model="selectedCoAuthors"
+                  :disabled="member.id === userId"
+                />
+                <span class="member-name">
+                  {{ getStudentDisplayName(member) }}
+                  <span v-if="member.id === userId" class="current-user-label">(Ty)</span>
+                </span>
+              </label>
+            </div>
+          </div>
+          
+          <div v-if="selectedCoAuthors.length === 0" class="validation-error">
+            Musisz wybrać co najmniej jednego współautora.
+          </div>
+          
+          <div class="modal-footer">
+            <button 
+              class="btn btn-primary" 
+              :disabled="selectedCoAuthors.length === 0 || loadingGroupMembers"
+              @click="uploadMultiAuthorFile"
+            >
+              Wyślij plik wieloautorski
+            </button>
+            <button class="btn btn-secondary" @click="closeMultiAuthorModal">Anuluj</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -151,7 +218,7 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
-      isSupervisor: false, // Will be set in created hook and verified
+      isSupervisor: false, 
       selectedStudentId: '',
       students: [],
       files: [],
@@ -169,8 +236,12 @@ export default {
       groupName: '',
       isLinkMode: false,
       oneNoteLink: '',
-      isVerifying: true, // Add this to prevent interactions during verification
-      fileContentCache: new Map() // Add this to cache file content
+      isVerifying: true, 
+      fileContentCache: new Map(), 
+      showMultiAuthorModal: false,
+      groupMembers: [],
+      selectedCoAuthors: [],
+      loadingGroupMembers: false
     };
   },
   computed: {
@@ -201,13 +272,11 @@ export default {
     this.projectId = this.$route.params.id;
     this.groupName = this.$route.query.name || 'Grupa projektowa';
     
-    // Initialize supervisor status as false, to be verified from the server
     this.isSupervisor = false;
     
     console.log('ChaptersPreview initialized with projectId:', this.projectId, 'Group name:', this.groupName);
     console.log('Is promoter (initial):', this.isPromoter, 'Is supervisor (initial): false - will verify from server');
     
-    // Verify supervisor status if user is a promoter
     if (this.isPromoter && this.projectId) {
       this.verifySupervisorStatus();
     }
@@ -235,12 +304,11 @@ export default {
       
       if (!this.isPromoter) {
         this.isVerifying = false;
-        return; // No need to verify for non-promoters
+        return; s
       }
       
       if (!this.projectId) {
         console.warn('Cannot verify supervisor status: missing project ID');
-        // For safety, if we can't verify, we set supervisor status to false
         this.isSupervisor = false;
         this.isVerifying = false;
         return;
@@ -248,14 +316,12 @@ export default {
       
       try {
         console.log('Verifying if user is supervisor for project:', this.projectId);
-        // Use the groups/all endpoint to get all groups with their supervisors
         const response = await axios.get('/api/v1/view/groups/all');
         
         if (response.data && response.data.dtos && Array.isArray(response.data.dtos)) {
           const allGroups = response.data.dtos;
           console.log('All groups data:', allGroups);
-          
-          // Find the group with the matching project_id
+        
           const targetGroup = allGroups.find(group => 
             group.project_id === Number(this.projectId) || 
             group.project_id === this.projectId
@@ -269,7 +335,6 @@ export default {
             
             console.log('Group supervisor ID:', supervisorId, 'Current user ID:', userId);
             
-            // Update supervisor status based on actual project data
             const isActualSupervisor = supervisorId === userId;
             
             if (this.isSupervisor !== isActualSupervisor) {
@@ -510,12 +575,10 @@ export default {
     },
 
     async uploadFile() {
-      // Re-verify supervisor status before uploading
       if (this.isPromoter) {
         await this.verifySupervisorStatus();
       }
       
-      // Check if the promoter is the supervisor of this group
       if (this.isPromoter && !this.isSupervisor) {
         this.errorMessage = 'Nie masz uprawnień do przesyłania plików tej grupie. Możesz przesyłać pliki tylko grupom, których jesteś promotorem.';
         return;
@@ -652,12 +715,10 @@ export default {
   },
 
   async shareOneNoteLink() {
-    // Re-verify supervisor status before sharing
     if (this.isPromoter) {
       await this.verifySupervisorStatus();
     }
     
-    // Check if the promoter is the supervisor of this group
     if (this.isPromoter && !this.isSupervisor) {
       this.errorMessage = 'Nie masz uprawnień do udostępniania linków tej grupie. Możesz udostępniać linki tylko grupom, których jesteś promotorem.';
       return;
@@ -755,7 +816,6 @@ export default {
         this.errorMessage = '';
         this.oneNoteLink = '';
         
-        // Refresh the file list
         await this.fetchStudentFiles();
         
         console.log('OneNote link added successfully:', response.data);
@@ -815,7 +875,6 @@ export default {
     },
     
     getDisplayName(file) {
-      // If it's a regular file (not a link) or if it has a name, use that
       if (file.name && file.name !== 'Brak Nazwy') {
         return file.name;
       }
@@ -915,12 +974,10 @@ export default {
     },
     
     async saveComment() {
-      // Re-verify supervisor status before saving
       if (this.isPromoter) {
         await this.verifySupervisorStatus();
       }
       
-      // Check if the promoter is the supervisor of this group
       if (this.isPromoter && !this.isSupervisor) {
         this.errorMessage = 'Nie masz uprawnień do dodawania komentarzy do plików tej grupy. Możesz komentować tylko pliki grup, których jesteś promotorem.';
         return;
@@ -1088,6 +1145,129 @@ export default {
         console.error('Błąd przy usuwaniu komentarza:', error);
         this.errorMessage = `Nie udało się usunąć komentarza: ${error.message}`;
         return false;
+      }
+    },
+
+    // Multi-author functionality methods
+    async openMultiAuthorModal() {
+      if (!this.selectedFile) {
+        this.errorMessage = 'Najpierw wybierz plik do przesłania.';
+        return;
+      }
+      
+      this.showMultiAuthorModal = true;
+      this.selectedCoAuthors = [];
+      await this.fetchGroupMembers();
+    },
+
+    closeMultiAuthorModal() {
+      this.showMultiAuthorModal = false;
+      this.selectedCoAuthors = [];
+      this.groupMembers = [];
+    },
+
+    async fetchGroupMembers() {
+      this.loadingGroupMembers = true;
+      try {
+        if (!this.projectId) {
+          this.errorMessage = 'Brak identyfikatora projektu. Nie można pobrać członków grupy.';
+          return;
+        }
+        
+        console.log('Fetching group members for project ID:', this.projectId);
+        const response = await axios.get(`/api/v1/view/groups/students?id=${this.projectId}`);
+        console.log('Groups response:', response.data);
+        
+        if (Array.isArray(response.data)) {
+          const allMembers = response.data;
+          console.log('Found group members:', allMembers);
+          
+          // Filter out logged in user and get other members
+          this.groupMembers = allMembers.filter(member => 
+            member.id !== Number(this.userId)
+          );
+          
+          console.log('Group members (excluding logged in user):', this.groupMembers);
+          
+          if (this.groupMembers.length === 0) {
+            this.errorMessage = 'Nie znaleziono innych członków w Twojej grupie.';
+          }
+        } else {
+          console.warn('Unexpected response format:', response.data);
+          this.errorMessage = 'Nieoczekiwany format odpowiedzi z serwera.';
+        }
+      } catch (error) {
+        console.error('Error fetching group members:', error);
+        this.errorMessage = 'Nie udało się pobrać listy członków grupy.';
+        this.groupMembers = [];
+      } finally {
+        this.loadingGroupMembers = false;
+      }
+    },
+
+    async uploadMultiAuthorFile() {
+      if (this.selectedCoAuthors.length === 0) {
+        this.errorMessage = 'Musisz wybrać co najmniej jednego współautora.';
+        return;
+      }
+
+      const file = this.selectedFile;
+      if (!file) {
+        this.errorMessage = 'Nie wybrano pliku.';
+        return;
+      }
+
+      try {
+        const uploaderId = Number(this.userId);
+        // Include logged in user in the list of owners
+        const ownerIds = [uploaderId, ...this.selectedCoAuthors.map(id => Number(id))];
+        
+        console.log('Multi-author upload:', {
+          uploaderId: uploaderId,
+          ownerIds: ownerIds,
+          fileName: file.name
+        });
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('uploaderId', uploaderId.toString());
+        
+        // New endpoint
+        const multiAuthorData = {
+          ownerIds: ownerIds
+        };
+        
+        // const response = await axios.post('/api/v1/files/multi-author', formData, {
+        //   headers: { 
+        //     'Content-Type': 'multipart/form-data'
+        //   },
+        //   params: multiAuthorData
+        // });
+
+        // Temporary success message (usunac po dodaniu endpointa)
+        console.log('Would send multi-author file with data:', {
+          formData: {
+            file: file.name,
+            uploaderId: uploaderId
+          },
+          ownerIds: ownerIds
+        });
+
+        this.uploadSuccess = true;
+        this.errorMessage = '';
+        this.selectedFile = null;
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = '';
+        }
+        
+        this.closeMultiAuthorModal();
+        
+        // Refresh files after upload (po dodaniu enpointa)
+        // await this.fetchFiles();
+
+      } catch (error) {
+        console.error('Multi-author upload error:', error);
+        this.errorMessage = 'Nie udało się przesłać pliku wieloautorskiego.';
       }
     },
   },
@@ -1470,5 +1650,100 @@ export default {
 .onenote-btn:hover:not(:disabled) {
   background-color: #5f1487;
   border-color: #5f1487;
+}
+
+/* Multi-author upload styles */
+.upload-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.multi-author-btn {
+  background-color: #6f42c1;
+  border-color: #6f42c1;
+}
+
+.multi-author-btn:hover:not(:disabled) {
+  background-color: #5a2d91;
+  border-color: #5a2d91;
+}
+
+.group-members-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  margin: 1rem 0;
+}
+
+.member-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.member-item:last-child {
+  border-bottom: none;
+}
+
+.member-checkbox {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  width: 100%;
+}
+
+.member-checkbox input[type="checkbox"] {
+  margin-right: 0.5rem;
+  transform: scale(1.2);
+}
+
+.member-checkbox input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.member-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.current-user-label {
+  color: #6c757d;
+  font-weight: normal;
+  font-style: italic;
+}
+
+.info-text {
+  color: #495057;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 0.25rem;
+  border-left: 4px solid #6f42c1;
+}
+
+.loading-text {
+  text-align: center;
+  color: #6c757d;
+  padding: 2rem;
+}
+
+.error-text {
+  text-align: center;
+  color: #dc3545;
+  padding: 2rem;
+}
+
+.validation-error {
+  color: #dc3545;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 0.25rem;
 }
 </style>
