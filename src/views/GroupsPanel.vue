@@ -51,7 +51,7 @@
               Promotor
               <span class="sort-indicator" :class="getSortClass('supervisor')"></span>
             </th>
-            <th>Status pracy</th>
+            <th class="status-align">Status pracy</th>
             <th>Akcje</th>
           </tr>
         </thead>
@@ -860,8 +860,12 @@ export default {
   font-weight: 500;
   color: #374151;
 }
+.status-align {
+  text-align: center !important;
+}
 
 .status-cell {
+  width: 150px;
   text-align: center;
 }
 
