@@ -2,7 +2,7 @@
   <div class="thesis-wrapper">
     <div class="header-container">
       <h2>Informacje o pracy dyplomowej</h2>
-      <button class="back-btn" @click="goBack">
+      <button v-if="isPromoter" class="back-btn" @click="goBack">
         <i class="icon-back"></i> Powrót
       </button>
     </div>
