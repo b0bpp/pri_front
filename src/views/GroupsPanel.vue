@@ -452,10 +452,7 @@ export default {
     isThesisAccepted(group) {
       console.log('Checking thesis acceptance for group:', group.name, 'Status:', group.thesis_status);
       
-      return group.thesis_status === 'APPROVED' || 
-             group.thesis_status === 'approved' ||
-             group.isThesisAccepted === true ||
-             group.thesisAccepted === true;
+      return group.thesis_status === 'APPROVED';
     },
     
     getThesisStatusText(group) {

@@ -54,7 +54,7 @@ export default {
 
         authStore.setUser(false, 30, firstName, lastName);
         console.log('Student login successful:', authStore);
-        this.router.push('/groups-panel');
+        await this.redirectStudentToChapters(30);
       } catch (error) {
         console.error('Error logging in as student:', error);
         this.errorMessage = `Nie udało się zalogować jako student: ${error.message}`;
@@ -110,7 +110,7 @@ export default {
 
         authStore.setUser(false, 28, firstName, lastName);
         console.log('Alternate student login successful:', authStore);
-        this.router.push('/groups-panel');
+        await this.redirectStudentToChapters(28);
       } catch (error) {
         console.error('Error logging in as alternate student:', error);
         this.errorMessage = `Nie udało się zalogować jako student: ${error.message}`;
@@ -142,6 +142,80 @@ export default {
       } catch (error) {
         console.error('Error logging in as alternate promoter:', error);
         this.errorMessage = `Nie udało się zalogować jako promotor: ${error.message}`;
+      }
+    },
+
+    async redirectStudentToChapters(studentId) {
+      try {
+        // Fetch all groups to find which group this student belongs to
+        const response = await axios.get('/api/v1/view/groups/all');
+        
+        let groups = [];
+        if (response.data && Array.isArray(response.data.dtos)) {
+          groups = response.data.dtos;
+        } else if (response.data && Array.isArray(response.data)) {
+          groups = response.data;
+        }
+
+        // Find the group logged in student belongs to
+        const studentGroup = groups.find(group => 
+          group.students && Array.isArray(group.students) && 
+          group.students.some(student => student.id === studentId)
+        );
+
+        if (studentGroup && studentGroup.project_id) {
+          console.log('Found student group:', studentGroup);
+          
+          // Check if thesis is accepted 
+          let groupWithThesisStatus = { ...studentGroup };
+          
+          // Fetch thesis status if not already present
+          if (!studentGroup.thesis_status && !studentGroup.isThesisAccepted && !studentGroup.thesisAccepted) {
+            try {
+              const thesisResponse = await axios.get(`/api/v1/thesis/byProjectId/${studentGroup.project_id}`);
+              const thesisData = thesisResponse.data;
+              console.log('Thesis response for project:', studentGroup.project_id, thesisData);
+              
+              groupWithThesisStatus.thesis_status = thesisData.approval_status || thesisData.status || 'PENDING';
+            } catch (thesisError) {
+              console.warn('Could not fetch thesis status, defaulting to PENDING:', thesisError);
+              groupWithThesisStatus.thesis_status = 'PENDING';
+            }
+          }
+
+          // Use the same logic as GroupsPanel for checking thesis acceptance
+          const isThesisAccepted = groupWithThesisStatus.thesis_status === 'APPROVED';
+
+          console.log('Thesis status:', groupWithThesisStatus.thesis_status, 'Is accepted:', isThesisAccepted);
+          
+          if (isThesisAccepted) {
+            // Redirect to ChaptersPreview if thesis is accepted
+            console.log('Redirecting to ChaptersPreview for accepted thesis');
+            this.router.push({ 
+              name: 'ChaptersPreview', 
+              params: { id: studentGroup.project_id.toString() },
+              query: { 
+                name: studentGroup.name || 'Unknown Group'
+              }
+            });
+          } else {
+            // Redirect to Thesis view if thesis is not accepted yet
+            console.log('Redirecting to Thesis view for non-accepted thesis');
+            this.router.push({ 
+              name: 'Thesis', 
+              params: { groupId: studentGroup.project_id.toString() },
+              query: { 
+                name: studentGroup.name || 'Unknown Group'
+              }
+            });
+          }
+        } else {
+          console.warn('Student does not belong to any group, redirecting to groups panel');
+          this.router.push('/groups-panel');
+        }
+      } catch (error) {
+        console.error('Error redirecting student to chapters:', error);
+        this.router.push('/groups-panel');
       }
     }
   }
