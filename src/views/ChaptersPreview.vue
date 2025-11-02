@@ -56,6 +56,14 @@
             >
               Wyślij pracę wieloautorską
             </button>
+            <button 
+              v-if="isPromoter && isSupervisor"
+              class="btn btn-secondary multi-author-btn" 
+              :disabled="!selectedFile" 
+              @click="openPromoterMultiAuthorModal"
+            >
+              Wyślij plik wieloautorski
+            </button>
           </div>
         </div>        <!-- OneNote link  -->
         <div v-if="isLinkMode && isPromoter && isSupervisor" class="link-input-container">
@@ -65,13 +73,22 @@
             v-model="oneNoteLink" 
             placeholder="Wklej link do OneNote"
           />
-          <button 
-            class="btn btn-primary onenote-btn" 
-            :disabled="!oneNoteLink || !selectedStudentId" 
-            @click="shareOneNoteLink"
-          >
-            Udostępnij link
-          </button>
+          <div class="upload-buttons">
+            <button 
+              class="btn btn-primary onenote-btn" 
+              :disabled="!oneNoteLink || !selectedStudentId" 
+              @click="shareOneNoteLink"
+            >
+              Udostępnij link
+            </button>
+            <button 
+              class="btn btn-secondary multi-author-btn" 
+              :disabled="!oneNoteLink" 
+              @click="openPromoterMultiAuthorLinkModal"
+            >
+              Udostępnij link wieloautorski
+            </button>
+          </div>
         </div>
         
         <p v-if="uploadSuccess" class="success-message">Materiał przesłany pomyślnie.</p>
@@ -206,6 +223,120 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal dla wyboru studentów przez promotora - plik -->
+    <div class="modal" v-if="showPromoterMultiAuthorModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Wybierz studentów do wysłania pliku</h3>
+          <button class="modal-close" @click="closePromoterMultiAuthorModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="info-text">
+            Wybierz studentów z grupy, którym chcesz przesłać ten plik. 
+          </p>
+          
+          <div v-if="loadingGroupMembers" class="loading-text">
+            Ładowanie studentów...
+          </div>
+          
+          <div v-else-if="students.length === 0" class="error-text">
+            Nie znaleziono studentów w tej grupie.
+          </div>
+          
+          <div v-else class="group-members-list">
+            <div 
+              v-for="student in students" 
+              :key="student.id"
+              class="member-item"
+            >
+              <label class="member-checkbox">
+                <input 
+                  type="checkbox" 
+                  :value="student.id"
+                  v-model="promoterSelectedStudents"
+                />
+                <span class="member-name">
+                  {{ getStudentDisplayName(student) }}
+                </span>
+              </label>
+            </div>
+          </div>
+          
+          <div v-if="promoterSelectedStudents.length === 0" class="validation-error">
+            Musisz wybrać co najmniej jednego studenta.
+          </div>
+          
+          <div class="modal-footer">
+            <button 
+              class="btn btn-primary" 
+              :disabled="promoterSelectedStudents.length === 0 || loadingGroupMembers"
+              @click="uploadPromoterMultiAuthorFile"
+            >
+              Wyślij plik wieloautorski
+            </button>
+            <button class="btn btn-secondary" @click="closePromoterMultiAuthorModal">Anuluj</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal dla wyboru studentów przez promotora - OneNote link -->
+    <div class="modal" v-if="showPromoterMultiAuthorLinkModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Wybierz studentów do udostępnienia linku</h3>
+          <button class="modal-close" @click="closePromoterMultiAuthorLinkModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="info-text">
+            Wybierz studentów z grupy, którym chcesz udostępnić link OneNote. 
+          </p>
+          
+          <div v-if="loadingGroupMembers" class="loading-text">
+            Ładowanie studentów...
+          </div>
+          
+          <div v-else-if="students.length === 0" class="error-text">
+            Nie znaleziono studentów w tej grupie.
+          </div>
+          
+          <div v-else class="group-members-list">
+            <div 
+              v-for="student in students" 
+              :key="student.id"
+              class="member-item"
+            >
+              <label class="member-checkbox">
+                <input 
+                  type="checkbox" 
+                  :value="student.id"
+                  v-model="promoterSelectedStudents"
+                />
+                <span class="member-name">
+                  {{ getStudentDisplayName(student) }}
+                </span>
+              </label>
+            </div>
+          </div>
+          
+          <div v-if="promoterSelectedStudents.length === 0" class="validation-error">
+            Musisz wybrać co najmniej jednego studenta.
+          </div>
+          
+          <div class="modal-footer">
+            <button 
+              class="btn btn-primary" 
+              :disabled="promoterSelectedStudents.length === 0 || loadingGroupMembers"
+              @click="sharePromoterMultiAuthorLink"
+            >
+              Udostępnij link wieloautorski
+            </button>
+            <button class="btn btn-secondary" @click="closePromoterMultiAuthorLinkModal">Anuluj</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -241,7 +372,12 @@ export default {
       showMultiAuthorModal: false,
       groupMembers: [],
       selectedCoAuthors: [],
-      loadingGroupMembers: false
+      loadingGroupMembers: false,
+      // Promoter multi-author functionality
+      showPromoterMultiAuthorModal: false,
+      showPromoterMultiAuthorLinkModal: false,
+      promoterSelectedStudents: [],
+      isPromoterMultiAuthorMode: false
     };
   },
   computed: {
@@ -1268,6 +1404,155 @@ export default {
       } catch (error) {
         console.error('Multi-author upload error:', error);
         this.errorMessage = 'Nie udało się przesłać pliku wieloautorskiego.';
+      }
+    },
+
+    // Promoter multi-author methods
+    async openPromoterMultiAuthorModal() {
+      this.loadingGroupMembers = true;
+      this.errorMessage = '';
+      
+      try {
+        await this.fetchGroupMembers();
+        this.showPromoterMultiAuthorModal = true;
+      } catch (error) {
+        console.error('Error opening promoter multi-author modal:', error);
+        this.errorMessage = 'Nie udało się pobrać listy studentów.';
+      } finally {
+        this.loadingGroupMembers = false;
+      }
+    },
+
+    closePromoterMultiAuthorModal() {
+      this.showPromoterMultiAuthorModal = false;
+      this.promoterSelectedStudents = [];
+    },
+
+    async uploadPromoterMultiAuthorFile() {
+      if (this.promoterSelectedStudents.length === 0) {
+        this.errorMessage = 'Musisz wybrać co najmniej jednego studenta.';
+        return;
+      }
+
+      const file = this.selectedFile;
+      if (!file) {
+        this.errorMessage = 'Nie wybrano pliku.';
+        return;
+      }
+
+      try {
+        const uploaderId = Number(this.userId);
+        const selectedStudentIds = this.promoterSelectedStudents.map(id => Number(id));
+        
+        console.log('Promoter multi-author upload:', {
+          uploaderId: uploaderId,
+          studentIds: selectedStudentIds,
+          fileName: file.name
+        });
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('uploaderId', uploaderId.toString());
+        
+        const multiAuthorData = {
+          studentIds: selectedStudentIds
+        };
+        
+        // const response = await axios.post('/api/v1/files/promoter-multi-author', formData, {
+        //   headers: { 
+        //     'Content-Type': 'multipart/form-data'
+        //   },
+        //   params: multiAuthorData
+        // });
+
+        // Temporary success message (usunac po dodaniu endpointa)
+        console.log('Would send promoter multi-author file with data:', {
+          formData: {
+            file: file.name,
+            uploaderId: uploaderId
+          },
+          studentIds: selectedStudentIds
+        });
+
+        this.uploadSuccess = true;
+        this.errorMessage = '';
+        this.selectedFile = null;
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = '';
+        }
+        
+        this.closePromoterMultiAuthorModal();
+        
+        // Refresh files after upload (po dodaniu enpointa)
+        // await this.fetchFiles();
+
+      } catch (error) {
+        console.error('Promoter multi-author upload error:', error);
+        this.errorMessage = 'Nie udało się przesłać pliku wieloautorskiego.';
+      }
+    },
+
+    async openPromoterMultiAuthorLinkModal() {
+      this.loadingGroupMembers = true;
+      this.errorMessage = '';
+      
+      try {
+        await this.fetchGroupMembers();
+        this.showPromoterMultiAuthorLinkModal = true;
+      } catch (error) {
+        console.error('Error opening promoter multi-author link modal:', error);
+        this.errorMessage = 'Nie udało się pobrać listy studentów.';
+      } finally {
+        this.loadingGroupMembers = false;
+      }
+    },
+
+    closePromoterMultiAuthorLinkModal() {
+      this.showPromoterMultiAuthorLinkModal = false;
+      this.promoterSelectedStudents = [];
+    },
+
+    async sharePromoterMultiAuthorLink() {
+      if (this.promoterSelectedStudents.length === 0) {
+        this.errorMessage = 'Musisz wybrać co najmniej jednego studenta.';
+        return;
+      }
+
+      if (!this.linkUrl || this.linkUrl.trim() === '') {
+        this.errorMessage = 'Musisz podać link do OneNote.';
+        return;
+      }
+
+      try {
+        const sharerId = Number(this.userId);
+        const selectedStudentIds = this.promoterSelectedStudents.map(id => Number(id));
+        
+        console.log('Promoter multi-author link share:', {
+          sharerId: sharerId,
+          studentIds: selectedStudentIds,
+          linkUrl: this.linkUrl
+        });
+
+        const linkData = {
+          url: this.linkUrl,
+          sharerId: sharerId,
+          studentIds: selectedStudentIds
+        };
+        
+        // const response = await axios.post('/api/v1/links/promoter-multi-author', linkData);
+
+        this.linkSuccess = true;
+        this.errorMessage = '';
+        this.linkUrl = '';
+        
+        this.closePromoterMultiAuthorLinkModal();
+        
+        // Refresh links after sharing (po dodaniu enpointa)
+        // await this.fetchLinks();
+
+      } catch (error) {
+        console.error('Promoter multi-author link share error:', error);
+        this.errorMessage = 'Nie udało się udostępnić linku wieloautorskiego.';
       }
     },
   },
