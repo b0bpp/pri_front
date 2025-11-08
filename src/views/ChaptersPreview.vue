@@ -1635,6 +1635,10 @@ export default {
   margin-bottom: 2rem;
 }
 
+.subheader-container {
+  margin-bottom: 2rem;
+}
+
 .back-btn {
   display: flex;
   align-items: center;
@@ -1661,6 +1665,13 @@ export default {
   text-align: center;
   color: #007bff;
   margin: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: #4a5568;
+  font-size: 1.8rem;
+  font-weight: normal;
 }
 
 .student-selector {
