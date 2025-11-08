@@ -8,6 +8,11 @@
         </button>
       </div>
 
+      <div class="subheader-container"> <!-- Contains the thesis title -->
+        <h3 class="subtitle">Tytuł pracy: {{ thesisTitle }}</h3>
+        <h3 v-if="chapterTitle" class="subtitle">Tytuł chapteru: {{ chapterTitle }}</h3>
+      </div>
+
       <!-- Dropdown: Lista studentów dla promotora -->
       <div class="student-selector" v-if="isPromoter">
         <strong class="form-label">Student z grupy {{ groupName }}:</strong>
@@ -20,12 +25,12 @@
       <!-- Upload -->
       <div class="upload-section">
         <h3>Prześlij materiały</h3>
-        
+
       <!-- Information message for promoters who are not supervisors -->
       <div v-if="isPromoter && !isSupervisor" class="warning-message">
         <p>Nie jesteś promotorem tej grupy. Możesz przeglądać pliki, ale nie możesz przesyłać nowych plików ani komentować.</p>
       </div>
-      
+
       <!-- OneNote/File for promoter -->
       <div v-if="isPromoter && isSupervisor" class="upload-toggle">
         <label class="toggle-option" :class="{ 'active-file': !isLinkMode }">
@@ -36,30 +41,30 @@
           <input type="radio" v-model="isLinkMode" :value="true">
           Link OneNote
         </label>
-      </div>        
+      </div>
         <!-- Sending File -->
         <div v-if="(!isPromoter || isSupervisor) && !isLinkMode">
           <input type="file" class="file-input" ref="fileInput" @change="handleFileChange" />
           <div class="upload-buttons">
-            <button 
-              class="btn btn-primary file-btn" 
-              :disabled="!selectedFile || (isPromoter && !selectedStudentId)" 
+            <button
+              class="btn btn-primary file-btn"
+              :disabled="!selectedFile || (isPromoter && !selectedStudentId)"
               @click="uploadFile"
             >
               Wyślij plik
             </button>
-            <button 
+            <button
               v-if="!isPromoter"
-              class="btn btn-secondary multi-author-btn" 
-              :disabled="!selectedFile" 
+              class="btn btn-secondary multi-author-btn"
+              :disabled="!selectedFile"
               @click="openMultiAuthorModal"
             >
               Wyślij pracę wieloautorską
             </button>
-            <button 
+            <button
               v-if="isPromoter && isSupervisor"
-              class="btn btn-secondary multi-author-btn" 
-              :disabled="!selectedFile" 
+              class="btn btn-secondary multi-author-btn"
+              :disabled="!selectedFile"
               @click="openPromoterMultiAuthorModal"
             >
               Wyślij plik wieloautorski
@@ -67,30 +72,30 @@
           </div>
         </div>        <!-- OneNote link  -->
         <div v-if="isLinkMode && isPromoter && isSupervisor" class="link-input-container">
-          <input 
-            type="text" 
-            class="link-input" 
-            v-model="oneNoteLink" 
+          <input
+            type="text"
+            class="link-input"
+            v-model="oneNoteLink"
             placeholder="Wklej link do OneNote"
           />
           <div class="upload-buttons">
-            <button 
-              class="btn btn-primary onenote-btn" 
-              :disabled="!oneNoteLink || !selectedStudentId" 
+            <button
+              class="btn btn-primary onenote-btn"
+              :disabled="!oneNoteLink || !selectedStudentId"
               @click="shareOneNoteLink"
             >
               Udostępnij link
             </button>
-            <button 
-              class="btn btn-secondary multi-author-btn" 
-              :disabled="!oneNoteLink" 
+            <button
+              class="btn btn-secondary multi-author-btn"
+              :disabled="!oneNoteLink"
               @click="openPromoterMultiAuthorLinkModal"
             >
               Udostępnij link wieloautorski
             </button>
           </div>
         </div>
-        
+
         <p v-if="uploadSuccess" class="success-message">Materiał przesłany pomyślnie.</p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
@@ -130,7 +135,7 @@
       <p v-else-if="!isPromoter">Brak przesłanych plików.</p>
       <p v-else>Wybierz studenta, aby zobaczyć pliki.</p>
     </div>
-    
+
     <!-- Promoter comments modal -->
     <div class="modal" v-if="showCommentModal">
       <div class="modal-content">
@@ -139,23 +144,23 @@
           <button class="modal-close" @click="closeCommentModal">&times;</button>
         </div>
         <div class="modal-body">
-          <textarea 
-            class="comment-textarea" 
-            v-model="fileComment" 
+          <textarea
+            class="comment-textarea"
+            v-model="fileComment"
             :readonly="!isPromoter"
             :placeholder="isPromoter ? 'Wpisz komentarz lub link do OneNote...' : 'Brak komentarza od promotora'"
           ></textarea>
-          
+
           <div v-if="isPromoter">
             <p class="hint-text">Możesz dodać link do OneNote lub bezpośredni komentarz do pliku.</p>
           </div>
-          
+
           <div v-if="fileComment && fileComment.includes('http')">
             <a :href="extractUrl(fileComment)" target="_blank" class="onenote-link">
               Otwórz link do notatki
             </a>
           </div>
-          
+
           <div class="modal-footer">
             <p v-if="commentSuccess" class="success-message">Komentarz zapisany pomyślnie!</p>
             <button v-if="isPromoter && isSupervisor" class="btn btn-primary" @click="saveComment">Zapisz komentarz</button>
@@ -174,26 +179,26 @@
         </div>
         <div class="modal-body">
           <p class="info-text">
-            Wybierz członków grupy, z którymi chcesz przesłać ten plik. 
+            Wybierz członków grupy, z którymi chcesz przesłać ten plik.
           </p>
-          
+
           <div v-if="loadingGroupMembers" class="loading-text">
             Ładowanie członków grupy...
           </div>
-          
+
           <div v-else-if="groupMembers.length === 0" class="error-text">
             Nie znaleziono innych członków grupy.
           </div>
-          
+
           <div v-else class="group-members-list">
-            <div 
-              v-for="member in groupMembers" 
+            <div
+              v-for="member in groupMembers"
               :key="member.id"
               class="member-item"
             >
               <label class="member-checkbox">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   :value="member.id"
                   v-model="selectedCoAuthors"
                   :disabled="member.id === userId"
@@ -205,14 +210,14 @@
               </label>
             </div>
           </div>
-          
+
           <div v-if="selectedCoAuthors.length === 0" class="validation-error">
             Musisz wybrać co najmniej jednego współautora.
           </div>
-          
+
           <div class="modal-footer">
-            <button 
-              class="btn btn-primary" 
+            <button
+              class="btn btn-primary"
               :disabled="selectedCoAuthors.length === 0 || loadingGroupMembers"
               @click="uploadMultiAuthorFile"
             >
@@ -233,26 +238,26 @@
         </div>
         <div class="modal-body">
           <p class="info-text">
-            Wybierz studentów z grupy, którym chcesz przesłać ten plik. 
+            Wybierz studentów z grupy, którym chcesz przesłać ten plik.
           </p>
-          
+
           <div v-if="loadingGroupMembers" class="loading-text">
             Ładowanie studentów...
           </div>
-          
+
           <div v-else-if="students.length === 0" class="error-text">
             Nie znaleziono studentów w tej grupie.
           </div>
-          
+
           <div v-else class="group-members-list">
-            <div 
-              v-for="student in students" 
+            <div
+              v-for="student in students"
               :key="student.id"
               class="member-item"
             >
               <label class="member-checkbox">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   :value="student.id"
                   v-model="promoterSelectedStudents"
                 />
@@ -262,14 +267,14 @@
               </label>
             </div>
           </div>
-          
+
           <div v-if="promoterSelectedStudents.length === 0" class="validation-error">
             Musisz wybrać co najmniej jednego studenta.
           </div>
-          
+
           <div class="modal-footer">
-            <button 
-              class="btn btn-primary" 
+            <button
+              class="btn btn-primary"
               :disabled="promoterSelectedStudents.length === 0 || loadingGroupMembers"
               @click="uploadPromoterMultiAuthorFile"
             >
@@ -290,26 +295,26 @@
         </div>
         <div class="modal-body">
           <p class="info-text">
-            Wybierz studentów z grupy, którym chcesz udostępnić link OneNote. 
+            Wybierz studentów z grupy, którym chcesz udostępnić link OneNote.
           </p>
-          
+
           <div v-if="loadingGroupMembers" class="loading-text">
             Ładowanie studentów...
           </div>
-          
+
           <div v-else-if="students.length === 0" class="error-text">
             Nie znaleziono studentów w tej grupie.
           </div>
-          
+
           <div v-else class="group-members-list">
-            <div 
-              v-for="student in students" 
+            <div
+              v-for="student in students"
               :key="student.id"
               class="member-item"
             >
               <label class="member-checkbox">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   :value="student.id"
                   v-model="promoterSelectedStudents"
                 />
@@ -319,14 +324,14 @@
               </label>
             </div>
           </div>
-          
+
           <div v-if="promoterSelectedStudents.length === 0" class="validation-error">
             Musisz wybrać co najmniej jednego studenta.
           </div>
-          
+
           <div class="modal-footer">
-            <button 
-              class="btn btn-primary" 
+            <button
+              class="btn btn-primary"
               :disabled="promoterSelectedStudents.length === 0 || loadingGroupMembers"
               @click="sharePromoterMultiAuthorLink"
             >
@@ -349,7 +354,7 @@ export default {
   data() {
     return {
       isPromoter: authStore.isPromoter,
-      isSupervisor: false, 
+      isSupervisor: false,
       selectedStudentId: '',
       students: [],
       files: [],
@@ -367,12 +372,14 @@ export default {
       groupName: '',
       isLinkMode: false,
       oneNoteLink: '',
-      isVerifying: true, 
-      fileContentCache: new Map(), 
+      isVerifying: true,
+      fileContentCache: new Map(),
       showMultiAuthorModal: false,
       groupMembers: [],
       selectedCoAuthors: [],
       loadingGroupMembers: false,
+      thesisTitle: '',
+      chapterTitle: '',
       // Promoter multi-author functionality
       showPromoterMultiAuthorModal: false,
       showPromoterMultiAuthorLinkModal: false,
@@ -407,22 +414,26 @@ export default {
     this.userId = authStore.userId;
     this.projectId = this.$route.params.id;
     this.groupName = this.$route.query.name || 'Grupa projektowa';
-    
+    this.fetchThesisTitle();
+    if (!this.isSupervisor) {
+      this.fetchChapters();
+    }
+
     this.isSupervisor = false;
-    
+
     console.log('ChaptersPreview initialized with projectId:', this.projectId, 'Group name:', this.groupName);
     console.log('Is promoter (initial):', this.isPromoter, 'Is supervisor (initial): false - will verify from server');
-    
+
     if (this.isPromoter && this.projectId) {
       this.verifySupervisorStatus();
     }
-    
+
     if (this.userId) {
       this.fetchFiles();
     } else {
       this.errorMessage = 'Brak zalogowanego użytkownika. Proszę zalogować się ponownie.';
     }
-    
+
     if (this.projectId) {
       this.fetchStudents();
     } else {
@@ -437,46 +448,46 @@ export default {
 
     async verifySupervisorStatus() {
       this.isVerifying = true;
-      
+
       if (!this.isPromoter) {
         this.isVerifying = false;
         return; s
       }
-      
+
       if (!this.projectId) {
         console.warn('Cannot verify supervisor status: missing project ID');
         this.isSupervisor = false;
         this.isVerifying = false;
         return;
       }
-      
+
       try {
         console.log('Verifying if user is supervisor for project:', this.projectId);
         const response = await axios.get('/api/v1/view/groups/all');
-        
+
         if (response.data && response.data.dtos && Array.isArray(response.data.dtos)) {
           const allGroups = response.data.dtos;
           console.log('All groups data:', allGroups);
-        
-          const targetGroup = allGroups.find(group => 
-            group.project_id === Number(this.projectId) || 
+
+          const targetGroup = allGroups.find(group =>
+            group.project_id === Number(this.projectId) ||
             group.project_id === this.projectId
           );
-          
+
           if (targetGroup) {
             console.log('Found target group:', targetGroup);
-            
+
             const supervisorId = targetGroup.supervisor?.id;
             const userId = Number(authStore.userId);
-            
+
             console.log('Group supervisor ID:', supervisorId, 'Current user ID:', userId);
-            
+
             const isActualSupervisor = supervisorId === userId;
-            
+
             if (this.isSupervisor !== isActualSupervisor) {
               console.warn(`Supervisor status mismatch - URL param: ${this.isSupervisor}, Actual: ${isActualSupervisor}`);
               this.isSupervisor = isActualSupervisor;
-              
+
               if (!isActualSupervisor) {
                 this.errorMessage = 'Nie jesteś promotorem tej grupy. Masz ograniczone uprawnienia.';
                 setTimeout(() => {
@@ -512,7 +523,7 @@ export default {
     getStudentDisplayName(student) {
       const firstName = student.fName || student.fname || student.firstName || student.f_name || '';
       const lastName = student.lName || student.lname || student.lastName || student.l_name || '';
-      
+
       if (firstName && lastName) {
         return `${firstName} ${lastName}`;
       } else if (firstName) {
@@ -530,19 +541,19 @@ export default {
         this.errorMessage = 'Brak identyfikatora projektu. Nie można pobrać studentów z grupy.';
         return;
       }
-      
+
       try {
         console.log('Fetching students for project ID:', this.projectId);
         const response = await axios.get(`/api/v1/view/groups/students?id=${this.projectId}`);
         console.log('Students in group response:', response.data);
-        
+
         if (Array.isArray(response.data)) {
           this.students = response.data;
         } else {
           console.warn('Unexpected response format for students:', response.data);
           this.students = [];
         }
-        
+
         if (this.students.length === 0) {
           console.warn('No students found in the group with ID:', this.projectId);
         } else {
@@ -554,7 +565,7 @@ export default {
         this.students = [];
       }
     },
-    
+
     async fetchFiles() {
       if (!this.userId) {
         this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
@@ -571,7 +582,7 @@ export default {
         this.errorMessage = 'Nie udało się pobrać plików.';
       }
     },
-    
+
     async fetchStudentFiles() {
       if (!this.selectedStudentId) {
         this.studentFiles = [];
@@ -581,13 +592,30 @@ export default {
         const response = await axios.get(`/api/v1/view?id=${this.selectedStudentId}`);
         this.studentFiles = await this.mapFiles(response.data.versions || []);
         console.log('Student files fetched:', this.studentFiles);
+
+        const chapters = await this.fetchChapters();
+
+        // Find the chapter that belongs to the selected student
+        const studentChapter = chapters.find(chapter =>
+            chapter.user_data_id === this.selectedStudentId
+        );
+
+        // Set the chapter title if found, otherwise show a message
+        if (studentChapter) {
+          this.chapterTitle = studentChapter.title || 'Brak tytułu';
+        } else {
+          this.chapterTitle = 'Brak przypisanego rozdziału';
+          console.warn('No chapter found for student:', this.selectedStudentId);
+        }
+
+
       } catch (error) {
         console.error('Błąd przy pobieraniu plików studenta:', error);
         this.studentFiles = [];
         this.errorMessage = 'Nie udało się pobrać plików studenta.';
       }
     },
-    
+
     async getFileNameFromContent(fileId) {
       if (this.fileContentCache.has(fileId)) {
         return this.fileContentCache.get(fileId);
@@ -607,44 +635,44 @@ export default {
 
     async mapFiles(versions) {
       console.log('Raw versions from API:', versions);
-      
+
       if (!versions || !Array.isArray(versions) || versions.length === 0) {
         console.warn('No versions data received or empty array');
         return [];
       }
-      
+
       versions.forEach((version, index) => {
         console.log(`Version ${index} data structure:`, JSON.stringify(version, null, 2));
-        
+
         console.log(`Version ${index} uploader:`, version.uploader || version.userdataid || version.uploaderId || 'Not found');
-        
+
         if (version.uploader) {
           console.log(`Uploader details for version ${index}:`, version.uploader);
         }
       });
-      
+
       return versions.map((version) => {
         console.log('Processing version:', version);
-        let chapterVersionId = version.id; 
-        let fileId = version.fileId || version.file_id; 
+        let chapterVersionId = version.id;
+        let fileId = version.fileId || version.file_id;
 
         console.log('Version IDs extracted:', {
           chapterVersionId: chapterVersionId,
           fileId: fileId
         });
-        
+
         let fileName = version.name || version.file_name || 'Brak Nazwy';
 
         if (version.link) {
           const linkParts = version.link.split('/');
           fileId = linkParts[linkParts.length - 1];
         }
-        
+
         let senderName = 'Nieznany';
         let uploaderId = null;
-        
+
         console.log('Uploader fields in version:', {
-          directUploader: version.uploader, 
+          directUploader: version.uploader,
           userdataid: version.userdataid,
           uploaderId: version.uploaderId,
           uploaderFName: version.uploaderFName,
@@ -652,7 +680,7 @@ export default {
           upload_time: version.upload_time,
           date: version.date
         });
-        
+
         if (version.uploader) {
           senderName = `${version.uploader.fName || version.uploader.fname || ''} ${version.uploader.lName || version.uploader.lname || ''}`.trim();
           uploaderId = version.uploader.id;
@@ -672,30 +700,30 @@ export default {
             senderName = this.getStudentDisplayName(uploader);
           }
         }
-        
+
         if (senderName === 'Nieznany' && uploaderId) {
           senderName = `Użytkownik ID: ${uploaderId}`;
         }
-        
+
         const ownerId = version.owner?.id || version.ownerId || version.owner_id;
         const uploadDate = version.upload_time || version.uploadedAt || version.date || new Date().toISOString();
 
         console.log('Mapped file:', {
           id: fileId,
-          name: fileName, 
-          uploadedAt: uploadDate, 
+          name: fileName,
+          uploadedAt: uploadDate,
           senderName: senderName,
           uploaderId: uploaderId,
           ownerId: ownerId,
           link: version.link,
           chapterVersionId: version.versionId || version.version_id || version.id || fileId
         });
-        
+
         return {
-          id: fileId, 
-          chapterVersionId: chapterVersionId, 
+          id: fileId,
+          chapterVersionId: chapterVersionId,
           name: fileName,
-          uploadedAt: uploadDate, 
+          uploadedAt: uploadDate,
           senderName: senderName,
           uploaderId: uploaderId,
           ownerId: ownerId,
@@ -714,23 +742,23 @@ export default {
       if (this.isPromoter) {
         await this.verifySupervisorStatus();
       }
-      
+
       if (this.isPromoter && !this.isSupervisor) {
         this.errorMessage = 'Nie masz uprawnień do przesyłania plików tej grupie. Możesz przesyłać pliki tylko grupom, których jesteś promotorem.';
         return;
       }
-      
+
       const file = this.selectedFile;
       if (!file) {
           this.errorMessage = 'Nie wybrano pliku.';
           return;
       }
       let uploaderId, ownerId;
-      
+
       try {
           uploaderId = Number(authStore.userId);
-          ownerId = this.isPromoter ? 
-              Number(this.selectedStudentId) : 
+          ownerId = this.isPromoter ?
+              Number(this.selectedStudentId) :
               Number(authStore.userId);
       } catch (error) {
           this.errorMessage = 'Błąd konwersji ID użytkownika.';
@@ -756,7 +784,7 @@ export default {
 
       const formData = new FormData();
       formData.append('file', file);
-      
+
       formData.append('uploaderId', uploaderId.toString());
       formData.append('ownerId', ownerId.toString());
 
@@ -781,21 +809,21 @@ export default {
             ownerId: ownerId.toString()
           });
 
-          console.log('AuthStore user info:', { 
+          console.log('AuthStore user info:', {
             userId: authStore.userId,
             userName: authStore.userName,
             isPromoter: authStore.isPromoter
           });
-          
+
           const response = await axios.post(url, formData, {
-              headers: { 
+              headers: {
                   'Content-Type': 'multipart/form-data'
               },
-              timeout: 30000 
+              timeout: 30000
           });
 
           console.log('Upload response:', response.data, response.status);
-        
+
           if (response.status === 200 && response.data && response.data > 0) {
               this.uploadSuccess = true;
               this.errorMessage = '';
@@ -812,16 +840,16 @@ export default {
           } else {
               throw new Error(`Upload failed. Server returned: ${response.data}`);
           }
-          
+
       } catch (error) {
           console.error('Upload error details:', error);
-          
+
           let errorMessage = 'Nie udało się przesłać pliku.';
-          
+
           if (error.response) {
               const status = error.response.status;
               const data = error.response.data;
-              
+
               if (status === 400) {
                   errorMessage = 'Nieprawidłowe dane. Sprawdź czy wybrano właściwego studenta.';
               } else if (status === 500) {
@@ -829,14 +857,14 @@ export default {
               } else {
                   errorMessage = `Błąd serwera (${status}): ${data?.message || 'Nieznany błąd'}`;
               }
-              
+
               console.error('Server error:', {
                   status: status,
                   data: data,
                   uploaderId: uploaderId,
                   ownerId: ownerId
               });
-              
+
           } else if (error.request) {
               errorMessage = 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.';
           } else if (error.code === 'ECONNABORTED') {
@@ -844,7 +872,7 @@ export default {
           } else {
               errorMessage = `Błąd: ${error.message}`;
           }
-          
+
           this.errorMessage = errorMessage;
           this.uploadSuccess = false;
       }
@@ -854,12 +882,12 @@ export default {
     if (this.isPromoter) {
       await this.verifySupervisorStatus();
     }
-    
+
     if (this.isPromoter && !this.isSupervisor) {
       this.errorMessage = 'Nie masz uprawnień do udostępniania linków tej grupie. Możesz udostępniać linki tylko grupom, których jesteś promotorem.';
       return;
     }
-    
+
     if (!this.oneNoteLink) {
       this.errorMessage = 'Proszę wprowadzić link OneNote.';
       return;
@@ -871,7 +899,7 @@ export default {
     }
 
     let uploaderId, ownerId;
-    
+
     try {
       uploaderId = Number(authStore.userId);
       ownerId = Number(this.selectedStudentId);
@@ -897,7 +925,7 @@ export default {
     };
 
     let apiUrl = '';
-    
+
     try {
       console.log('=== ONENOTE LINK DEBUG INFO ===');
       console.log('Original authStore.userId:', authStore.userId, typeof authStore.userId);
@@ -908,7 +936,7 @@ export default {
       console.log('Link details:', {
           url: this.oneNoteLink
       });
-      
+
       console.log('Preparing to send OneNote link:', linkData);
 
       const chapters = await this.fetchChapters();
@@ -918,42 +946,42 @@ export default {
         return;
       }
 
-      const studentChapter = chapters.find(chapter => 
+      const studentChapter = chapters.find(chapter =>
         chapter.user_data_id === Number(this.selectedStudentId)
       );
-      
+
       if (!studentChapter) {
         console.warn('No chapter found for student ID:', this.selectedStudentId);
         console.log('Available chapters:', chapters);
         this.errorMessage = 'Nie znaleziono rozdziału dla wybranego studenta. Proszę najpierw utworzyć rozdział dla tego studenta.';
         return;
       }
-      
+
       const chapterId = studentChapter.id;
       console.log('Using chapter ID for student:', chapterId, 'Student ID:', this.selectedStudentId);
-      
+
       if (!chapterId) {
         this.errorMessage = 'Nie znaleziono ID rozdziału. Proszę najpierw utworzyć rozdział.';
         return;
       }
-      
+
       apiUrl = `/api/v1/chapter/${this.projectId}/addVersionWithLink?chapterId=${chapterId}`;
       console.log('Request URL:', apiUrl);
-      
+
       const response = await axios.post(apiUrl, linkData, {
-          headers: { 
+          headers: {
               'Content-Type': 'application/json'
           },
-          timeout: 30000 
+          timeout: 30000
       });
-      
+
       if (response.status === 200 || response.status === 201) {
         this.uploadSuccess = true;
         this.errorMessage = '';
         this.oneNoteLink = '';
-        
+
         await this.fetchStudentFiles();
-        
+
         console.log('OneNote link added successfully:', response.data);
       } else {
         throw new Error(`Link sharing failed. Server returned: ${response.data}`);
@@ -961,13 +989,13 @@ export default {
 
     } catch (error) {
       console.error('Error sharing OneNote link:', error);
-      
+
       let errorMessage = 'Nie udało się udostępnić linku.';
-      
+
       if (error.response) {
         const status = error.response.status;
         const data = error.response.data;
-        
+
         if (status === 400) {
           errorMessage = 'Nieprawidłowe dane. Sprawdź poprawność linku i wybranego studenta.';
         } else if (status === 404) {
@@ -981,7 +1009,7 @@ export default {
         } else {
           errorMessage = `Błąd serwera (${status}): ${data?.message || 'Nieznany błąd'}`;
         }
-        
+
         console.error('Server error details:', {
           status: status,
           data: data,
@@ -993,7 +1021,7 @@ export default {
       } else if (error.message) {
         errorMessage = `Błąd: ${error.message}`;
       }
-      
+
       this.errorMessage = errorMessage;
       this.uploadSuccess = false;
     }
@@ -1009,7 +1037,7 @@ export default {
         minute: '2-digit',
       });
     },
-    
+
     getDisplayName(file) {
       if (file.name && file.name !== 'Brak Nazwy') {
         return file.name;
@@ -1017,7 +1045,7 @@ export default {
 
       if (file.link) {
         const matches = file.link.match(/target%28[^%]+\.one%7C[^%]+%2F([^%]+)%7C/);
-        
+
         if (matches && matches[1]) {
           return decodeURIComponent(matches[1].replace(/\+/g, ' '));
         }
@@ -1032,7 +1060,7 @@ export default {
 
       return 'Brak Nazwy';
     },
-    
+
     previewFile(file) {
       console.log('Previewing file:', file);
       if (file.link) {
@@ -1043,21 +1071,21 @@ export default {
         this.errorMessage = 'Nie można otworzyć pliku - brak linku.';
       }
     },
-    
+
     goToFileChecklist(file) {
       if (!file.chapterVersionId) {
         console.error('No chapter version ID available for file:', file);
         this.errorMessage = 'Nie można otworzyć checklisty - brak ID wersji rozdziału.';
         return;
       }
-      
+
       console.log(`Navigating to checklist with chapter version ID: ${file.chapterVersionId}`);
-      this.$router.push({ 
-        name: 'FileChecklist', 
+      this.$router.push({
+        name: 'FileChecklist',
         params: { chapterVersionId: file.chapterVersionId }
       });
     },
-    
+
     goToStudentChecklist() {
       if (!this.userId) {
         this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
@@ -1065,7 +1093,7 @@ export default {
       }
       this.$router.push(`/checklist/${this.userId}`);
     },
-    
+
     async openCommentModal(file) {
       this.selectedFileForComment = file;
       this.showCommentModal = true;
@@ -1073,73 +1101,73 @@ export default {
       console.log(`Opening comment modal for version ID: ${versionId}`);
       await this.fetchFileComment(versionId);
     },
-    
+
     closeCommentModal() {
       this.showCommentModal = false;
       this.selectedFileForComment = null;
     },
-    
+
     async fetchFileComment(versionId) {
       console.log(`Fetching comments for version ID: ${versionId}`);
-      
+
       if (this.fileComments[versionId]) {
         this.fileComment = this.fileComments[versionId];
         return;
       }
-      
+
       try {
         const response = await axios.get(`/api/v1/view/comments?versionId=${versionId}`);
         console.log('Comment API response:', response.data);
-        
+
         if (response.data && response.data.comments && response.data.comments.length > 0) {
           const comments = response.data.comments;
           const latestComment = comments.sort((a, b) => b.id - a.id)[0];
-         
+
           this.fileComment = latestComment.text || '';
           console.log('Latest comment found:', latestComment);
         } else {
           this.fileComment = '';
           console.log('No comments found for version:', versionId);
         }
-        
+
         this.fileComments[versionId] = this.fileComment;
       } catch (error) {
         console.error('Błąd przy pobieraniu komentarza:', error);
         this.fileComment = '';
       }
     },
-    
+
     async saveComment() {
       if (this.isPromoter) {
         await this.verifySupervisorStatus();
       }
-      
+
       if (this.isPromoter && !this.isSupervisor) {
         this.errorMessage = 'Nie masz uprawnień do dodawania komentarzy do plików tej grupy. Możesz komentować tylko pliki grup, których jesteś promotorem.';
         return;
       }
-      
+
       if (!this.selectedFileForComment) {
         this.errorMessage = 'Brak pliku. Nie można zapisać komentarza.';
         return;
       }
-      
+
       const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
       if (!versionId) {
         this.errorMessage = 'Brak ID wersji pliku. Nie można zapisać komentarza.';
         return;
       }
-      
+
       try {
         let existingCommentId = null;
-        
+
         try {
           console.log('Checking for existing comments first...');
           const versionIdForCheck = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
           const existingCommentsResponse = await axios.get(`/api/v1/view/comments?versionId=${versionIdForCheck}`);
-          
-          if (existingCommentsResponse.data && 
-              existingCommentsResponse.data.comments && 
+
+          if (existingCommentsResponse.data &&
+              existingCommentsResponse.data.comments &&
               existingCommentsResponse.data.comments.length > 0) {
             existingCommentId = existingCommentsResponse.data.comments[0].id;
             console.log(`Found existing comment with ID: ${existingCommentId}`);
@@ -1147,15 +1175,15 @@ export default {
         } catch (checkError) {
           console.log('Error checking for existing comments:', checkError);
         }
-      
+
         if (existingCommentId) {
           try {
             console.log(`Updating existing comment ${existingCommentId} with text: ${this.fileComment}`);
-            const updateResponse = await axios.post(`/api/v1/update/comment`, { 
+            const updateResponse = await axios.post(`/api/v1/update/comment`, {
               id: existingCommentId,
-              text: this.fileComment 
+              text: this.fileComment
             });
-            
+
             if (updateResponse.status === 200) {
               const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
               this.fileComments[versionId] = this.fileComment;
@@ -1165,7 +1193,7 @@ export default {
                 this.commentSuccess = false;
                 this.closeCommentModal();
               }, 1500);
-              
+
               return;
             }
           } catch (updateError) {
@@ -1180,7 +1208,7 @@ export default {
           fname: authStore.fname || "",
           lname: authStore.lname || ""
         };
-        
+
         console.log('Current auth store state:', {
           userId: authStore.userId,
           fname: authStore.fname,
@@ -1190,12 +1218,12 @@ export default {
         if (existingCommentId) {
           commentDto.id = parseInt(existingCommentId);
         }
-        
+
         console.log('Creating new comment:', commentDto);
-        
+
         const response = await axios.post('/api/v1/post/comment', commentDto);
         console.log('Save comment response:', response);
-        
+
         if (response.status === 200 || response.status === 201) {
           const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
           this.fileComments[versionId] = this.fileComment;
@@ -1213,13 +1241,13 @@ export default {
         }
       } catch (error) {
         console.error('Błąd przy zapisywaniu komentarza:', error);
-        
+
         let errorMsg = 'Nie udało się zapisać komentarza.';
-        
+
         if (error.response) {
           const status = error.response.status;
           console.error('Response error:', error.response.data);
-          
+
           if (status === 400) {
             errorMsg = 'Nieprawidłowy format danych komentarza.';
           } else if (status === 500) {
@@ -1230,29 +1258,35 @@ export default {
             }
           }
         }
-        
+
         this.errorMessage = errorMsg;
       }
     },
-    
+
     extractUrl(text) {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const matches = text.match(urlRegex);
       return matches ? matches[0] : '#';
     },
-    
+
     async fetchChapters() {
       if (!this.projectId) {
         console.error('No project ID available to fetch chapters');
         return [];
       }
-      
+
       try {
         console.log('Fetching chapters for project:', this.projectId);
         const response = await axios.get(`/api/v1/chapter/${this.projectId}/all`);
-        
+
         if (response.data && Array.isArray(response.data)) {
           console.log('Chapters fetched successfully:', response.data);
+
+          // If user is not a supervisor, set the chapter title from their own data
+          if (!this.isSupervisor && response.data.length > 0) {
+            this.chapterTitle = response.data[0].title || 'Brak tytułu';
+          }
+
           return response.data;
         } else {
           console.warn('Unexpected response format from chapters endpoint:', response.data);
@@ -1269,7 +1303,7 @@ export default {
         console.log('Attempting to delete comment ID:', commentId);
         const response = await axios.get(`/api/v1/view/comment?id=${commentId}`);
         console.log('Delete comment response:', response.data);
-        
+
         if (response.data === true) {
           const versionId = this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id;
           await this.fetchFileComment(versionId);
@@ -1290,7 +1324,7 @@ export default {
         this.errorMessage = 'Najpierw wybierz plik do przesłania.';
         return;
       }
-      
+
       this.showMultiAuthorModal = true;
       this.selectedCoAuthors = [];
       await this.fetchGroupMembers();
@@ -1309,22 +1343,22 @@ export default {
           this.errorMessage = 'Brak identyfikatora projektu. Nie można pobrać członków grupy.';
           return;
         }
-        
+
         console.log('Fetching group members for project ID:', this.projectId);
         const response = await axios.get(`/api/v1/view/groups/students?id=${this.projectId}`);
         console.log('Groups response:', response.data);
-        
+
         if (Array.isArray(response.data)) {
           const allMembers = response.data;
           console.log('Found group members:', allMembers);
-          
+
           // Filter out logged in user and get other members
-          this.groupMembers = allMembers.filter(member => 
+          this.groupMembers = allMembers.filter(member =>
             member.id !== Number(this.userId)
           );
-          
+
           console.log('Group members (excluding logged in user):', this.groupMembers);
-          
+
           if (this.groupMembers.length === 0) {
             this.errorMessage = 'Nie znaleziono innych członków w Twojej grupie.';
           }
@@ -1357,7 +1391,7 @@ export default {
         const uploaderId = Number(this.userId);
         // Include logged in user in the list of owners
         const ownerIds = [uploaderId, ...this.selectedCoAuthors.map(id => Number(id))];
-        
+
         console.log('Multi-author upload:', {
           uploaderId: uploaderId,
           ownerIds: ownerIds,
@@ -1367,14 +1401,14 @@ export default {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('uploaderId', uploaderId.toString());
-        
+
         // New endpoint
         const multiAuthorData = {
           ownerIds: ownerIds
         };
-        
+
         // const response = await axios.post('/api/v1/files/multi-author', formData, {
-        //   headers: { 
+        //   headers: {
         //     'Content-Type': 'multipart/form-data'
         //   },
         //   params: multiAuthorData
@@ -1395,9 +1429,9 @@ export default {
         if (this.$refs.fileInput) {
           this.$refs.fileInput.value = '';
         }
-        
+
         this.closeMultiAuthorModal();
-        
+
         // Refresh files after upload (po dodaniu enpointa)
         // await this.fetchFiles();
 
@@ -1411,7 +1445,7 @@ export default {
     async openPromoterMultiAuthorModal() {
       this.loadingGroupMembers = true;
       this.errorMessage = '';
-      
+
       try {
         await this.fetchGroupMembers();
         this.showPromoterMultiAuthorModal = true;
@@ -1443,7 +1477,7 @@ export default {
       try {
         const uploaderId = Number(this.userId);
         const selectedStudentIds = this.promoterSelectedStudents.map(id => Number(id));
-        
+
         console.log('Promoter multi-author upload:', {
           uploaderId: uploaderId,
           studentIds: selectedStudentIds,
@@ -1453,13 +1487,13 @@ export default {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('uploaderId', uploaderId.toString());
-        
+
         const multiAuthorData = {
           studentIds: selectedStudentIds
         };
-        
+
         // const response = await axios.post('/api/v1/files/promoter-multi-author', formData, {
-        //   headers: { 
+        //   headers: {
         //     'Content-Type': 'multipart/form-data'
         //   },
         //   params: multiAuthorData
@@ -1480,9 +1514,9 @@ export default {
         if (this.$refs.fileInput) {
           this.$refs.fileInput.value = '';
         }
-        
+
         this.closePromoterMultiAuthorModal();
-        
+
         // Refresh files after upload (po dodaniu enpointa)
         // await this.fetchFiles();
 
@@ -1495,7 +1529,7 @@ export default {
     async openPromoterMultiAuthorLinkModal() {
       this.loadingGroupMembers = true;
       this.errorMessage = '';
-      
+
       try {
         await this.fetchGroupMembers();
         this.showPromoterMultiAuthorLinkModal = true;
@@ -1526,7 +1560,7 @@ export default {
       try {
         const sharerId = Number(this.userId);
         const selectedStudentIds = this.promoterSelectedStudents.map(id => Number(id));
-        
+
         console.log('Promoter multi-author link share:', {
           sharerId: sharerId,
           studentIds: selectedStudentIds,
@@ -1538,15 +1572,15 @@ export default {
           sharerId: sharerId,
           studentIds: selectedStudentIds
         };
-        
+
         // const response = await axios.post('/api/v1/links/promoter-multi-author', linkData);
 
         this.linkSuccess = true;
         this.errorMessage = '';
         this.linkUrl = '';
-        
+
         this.closePromoterMultiAuthorLinkModal();
-        
+
         // Refresh links after sharing (po dodaniu enpointa)
         // await this.fetchLinks();
 
@@ -1555,6 +1589,23 @@ export default {
         this.errorMessage = 'Nie udało się udostępnić linku wieloautorskiego.';
       }
     },
+    async fetchThesisTitle() {
+      if (!this.projectId) return;
+
+      try {
+        const response = await axios.get(`/api/v1/thesis/byProjectId/${this.projectId}`);
+        if (response.data) {
+          this.thesisTitle = response.data.title || response.data.name || 'Brak tytułu';
+          console.log('Fetched thesis title:', this.thesisTitle);
+        }
+      } catch (error) {
+        console.error('Error fetching thesis title:', error);
+        this.thesisTitle = 'ERROR, thesis title not found';
+      }
+    },
+
+
+
   },
 };
 </script>
