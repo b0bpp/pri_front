@@ -52,6 +52,7 @@
               <span class="sort-indicator" :class="getSortClass('supervisor')"></span>
             </th>
             <th class="status-align">Status pracy</th>
+            <th class="status-align">Data Obrony</th>
             <th>Akcje</th>
           </tr>
         </thead>
@@ -79,6 +80,11 @@
                 {{ getThesisStatusText(group) }}
               </span>
             </td>
+            <td class="status-cell">
+              <span class="status-badge" :class="getThesisStatusClass(group)">
+                {{ getThesisStatusText(group) }}
+              </span>
+            </td>
             <td class="actions-cell">
               <div class="action-buttons">
                 <button class="action-btn primary" 
@@ -88,14 +94,16 @@
                   <i class="icon-eye"></i>
                   {{ isUserInGroup(group) || isPromoter ? (isThesisAccepted(group) ? 'Rozdziały' : 'Praca dyplomowa') : 'Brak dostępu' }}
                 </button>
-                
-                <button v-if="isPromoter && isThesisAccepted(group) && isGroupSupervisor(group)" 
-                        class="action-btn secondary copy-btn" 
-                        @click.stop="viewThesisDetails(group)">
-                  <i class="icon-copy"></i>
-                  Kopiuj elementy
+
+                <button v-if="isThesisAccepted(group) && (isUserInGroup(group) || isPromoter)"
+                        class="action-btn primary"
+                        @click.stop="viewTimeline(group)"
+                        :disabled="!isGroupSupervisor(group) && isPromoter"
+                        :class="{'disabled-btn': !isGroupSupervisor(group) && isPromoter}">
+                  <i class="icon-eye"></i>
+                  {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'Oś czasu' : 'Brak dostępu' }}
                 </button>
-                
+
                 <button v-if="isPromoter && isThesisAccepted(group) && !isGroupSupervisor(group)"
                         class="action-btn secondary copy-btn disabled-btn"
                         disabled
@@ -104,13 +112,20 @@
                   Kopiuj elementy
                 </button>
 
+                <button v-if="isPromoter && isThesisAccepted(group) && isGroupSupervisor(group)"
+                        class="action-btn secondary copy-btn"
+                        @click.stop="viewThesisDetails(group)">
+                  <i class="icon-copy"></i>
+                  Kopiuj elementy
+                </button>
+
                 <button v-if="isThesisAccepted(group) && (isUserInGroup(group) || isPromoter)"
                         class="action-btn primary"
-                        @click.stop="viewTimeline(group)"
+                        @click.stop="setThesisDefenseDate(group)"
                         :disabled="!isGroupSupervisor(group) && isPromoter"
                         :class="{'disabled-btn': !isGroupSupervisor(group) && isPromoter}">
                   <i class="icon-timeline"></i>
-                  {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'View timeline' : 'Brak dostępu' }}
+                  {{ (isUserInGroup(group) || isPromoter) && isThesisAccepted(group) ? 'Ustal termin obrony' : 'Brak dostępu' }}
                 </button>
 
               </div>
@@ -125,11 +140,39 @@
       </div>
     </div>
   </div>
+
+  <!-- AI generated -->
+  <div class="modal fade" id="defenseDateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Ustal termin obrony</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Wybierz datę:</label>
+            <input
+                type="date"
+                class="form-control"
+                min="2025-11-08"
+                value="2025-11-08"
+            >
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+          <button type="button" class="btn btn-primary">Zapisz</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
 import axios from 'axios';
 import authStore from '/src/stores/authStore.js';
+import { Modal } from 'bootstrap';
 
 export default {
   name: 'GroupsPanel',
@@ -448,7 +491,13 @@ export default {
         }
       }
     },
-    
+
+
+    setThesisDefenseDate(group) {
+      this.selectedGroup = group;
+      const modal = new Modal(document.getElementById('defenseDateModal'));
+      modal.show();
+    },
     isThesisAccepted(group) {
       console.log('Checking thesis acceptance for group:', group.name, 'Status:', group.thesis_status);
       

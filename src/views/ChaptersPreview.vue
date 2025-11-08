@@ -3,9 +3,15 @@
     <div class="card">
       <div class="header-container">
         <h2 class="title">Przegląd rozdziałów - {{ groupName }}</h2>
-        <button class="back-btn" @click="goBack">
-          <i class="icon-back"></i> Powrót
-        </button>
+        <div class="button-container">
+          <button class="back-btn" @click="goBack">
+            <i class="icon-back"></i> Powrót
+          </button>
+        </div>
+      </div>
+      <div class="subheader-container"> <!-- Contains the thesis title -->
+        <h3 class="subtitle">Tytuł pracy: {{ thesisTitle }}</h3>
+        <h3 v-if="chapterTitle" class="subtitle">Tytuł chapteru: {{ chapterTitle }}</h3>
       </div>
 
       <!-- Dropdown: Lista studentów dla promotora -->
@@ -170,7 +176,9 @@ export default {
       isLinkMode: false,
       oneNoteLink: '',
       isVerifying: true, // Add this to prevent interactions during verification
-      fileContentCache: new Map() // Add this to cache file content
+      fileContentCache: new Map(), // Add this to cache file content
+      thesisTitle: '',
+      chapterTitle: ''
     };
   },
   computed: {
@@ -200,6 +208,10 @@ export default {
     this.userId = authStore.userId;
     this.projectId = this.$route.params.id;
     this.groupName = this.$route.query.name || 'Grupa projektowa';
+    this.fetchThesis();
+    if (!this.isPromoter) {
+      this.fetchChapters();
+    }
     
     // Initialize supervisor status as false, to be verified from the server
     this.isSupervisor = false;
@@ -225,9 +237,27 @@ export default {
     }
   },
   methods: {
+    async fetchThesis() {
+      if (!this.projectId) return;
+
+      try {
+        const response = await axios.get(`/api/v1/thesis/byProjectId/${this.projectId}`);
+        if (response.data) {
+          this.thesisTitle = response.data.title || response.data.name || 'Brak tytułu';
+          console.log('Fetched thesis title:', this.thesisTitle);
+        }
+      } catch (error) {
+        console.error('Error fetching thesis title:', error);
+        this.thesisTitle = 'ERROR, thesis title not found';
+      }
+    },
 
     goBack() {
       this.$router.push({ name: 'GroupsPanel' });
+    },
+
+    setDefenseDate() {
+      console.log('Setting a defense date is not implemented yet');
     },
 
     async verifySupervisorStatus() {
@@ -380,6 +410,22 @@ export default {
         const response = await axios.get(`/api/v1/view?id=${this.selectedStudentId}`);
         this.studentFiles = await this.mapFiles(response.data.versions || []);
         console.log('Student files fetched:', this.studentFiles);
+
+        const chapters = await this.fetchChapters();
+
+        // Find the chapter that belongs to the selected student
+        const studentChapter = chapters.find(chapter =>
+            chapter.user_data_id === this.selectedStudentId
+        );
+
+        // Set the chapter title if found, otherwise show a message
+        if (studentChapter) {
+          this.chapterTitle = studentChapter.title || 'Brak tytułu';
+        } else {
+          this.chapterTitle = 'Brak przypisanego rozdziału';
+          console.warn('No chapter found for student:', this.selectedStudentId);
+        }
+
       } catch (error) {
         console.error('Błąd przy pobieraniu plików studenta:', error);
         this.studentFiles = [];
@@ -1047,19 +1093,25 @@ export default {
       const matches = text.match(urlRegex);
       return matches ? matches[0] : '#';
     },
-    
+
     async fetchChapters() {
       if (!this.projectId) {
         console.error('No project ID available to fetch chapters');
         return [];
       }
-      
+
       try {
         console.log('Fetching chapters for project:', this.projectId);
         const response = await axios.get(`/api/v1/chapter/${this.projectId}/all`);
-        
+
         if (response.data && Array.isArray(response.data)) {
           console.log('Chapters fetched successfully:', response.data);
+
+          // If user is not a supervisor, set the chapter title from their own data
+          if (!this.isSupervisor && response.data.length > 0) {
+            this.chapterTitle = response.data[0].title || 'Brak tytułu';
+          }
+
           return response.data;
         } else {
           console.warn('Unexpected response format from chapters endpoint:', response.data);
@@ -1116,7 +1168,24 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.subheader-container {
   margin-bottom: 2rem;
+}
+
+.button-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.subtitle {
+  margin: 0;
+  color: #4a5568;
+  font-size: 1.8rem;
+  font-weight: normal;
+
 }
 
 .back-btn {
