@@ -572,14 +572,33 @@ export default {
         return;
       }
       try {
-        const response = await axios.get(`/api/v1/view?id=${this.userId}`);
-        this.files = await this.mapFiles(response.data.versions || []);
+        console.log('Fetching files for user ID:', this.userId);
+        const response = await axios.get(`/api/v1/view/version/byOwner/${this.userId}`);
+        
+        // Handle the new response format
+        if (response.data && response.data.versions) {
+          this.files = await this.mapFiles(response.data.versions);
+        } else if (response.data && Array.isArray(response.data)) {
+          this.files = await this.mapFiles(response.data);
+        } else {
+          console.warn('Unexpected response format:', response.data);
+          this.files = [];
+        }
+        
         console.log('Files fetched:', this.files);
         this.uploadSuccess = false;
+        this.errorMessage = '';
+        
       } catch (error) {
         console.error('Błąd przy pobieraniu plików:', error);
+        
+        if (error.response?.status === 500) {
+          this.errorMessage = 'Błąd serwera - prawdopodobnie brak rozdziału dla tego użytkownika. Skontaktuj się z administratorem.';
+        } else {
+          this.errorMessage = 'Nie udało się pobrać plików.';
+        }
+        
         this.files = [];
-        this.errorMessage = 'Nie udało się pobrać plików.';
       }
     },
 
@@ -589,15 +608,25 @@ export default {
         return;
       }
       try {
-        const response = await axios.get(`/api/v1/view?id=${this.selectedStudentId}`);
-        this.studentFiles = await this.mapFiles(response.data.versions || []);
+        console.log('Fetching files for student ID:', this.selectedStudentId);
+        const response = await axios.get(`/api/v1/view/version/byOwner/${this.selectedStudentId}`);
+        
+        if (response.data && response.data.versions) {
+          this.studentFiles = await this.mapFiles(response.data.versions);
+        } else if (response.data && Array.isArray(response.data)) {
+          this.studentFiles = await this.mapFiles(response.data);
+        } else {
+          console.warn('Unexpected response format:', response.data);
+          this.studentFiles = [];
+        }
+        
         console.log('Student files fetched:', this.studentFiles);
 
         const chapters = await this.fetchChapters();
 
         // Find the chapter that belongs to the selected student
         const studentChapter = chapters.find(chapter =>
-            chapter.user_data_id === this.selectedStudentId
+            chapter.owner_id === this.selectedStudentId
         );
 
         // Set the chapter title if found, otherwise show a message
@@ -608,11 +637,16 @@ export default {
           console.warn('No chapter found for student:', this.selectedStudentId);
         }
 
-
       } catch (error) {
         console.error('Błąd przy pobieraniu plików studenta:', error);
+        
+        if (error.response?.status === 500) {
+          this.errorMessage = 'Błąd serwera - prawdopodobnie brak rozdziału dla tego studenta.';
+        } else {
+          this.errorMessage = 'Nie udało się pobrać plików studenta.';
+        }
+        
         this.studentFiles = [];
-        this.errorMessage = 'Nie udało się pobrać plików studenta.';
       }
     },
 
@@ -801,7 +835,8 @@ export default {
       });
 
       try {
-          const url = `/api/v1/files?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
+          // Single author upload 
+          const url = `/api/v1/file?uploaderId=${uploaderId.toString()}&ownerId=${ownerId.toString()}`;
           console.log('Request URL:', url);
           console.log('FormData contains:', {
             file: file.name,
@@ -947,7 +982,7 @@ export default {
       }
 
       const studentChapter = chapters.find(chapter =>
-        chapter.user_data_id === Number(this.selectedStudentId)
+        chapter.owner_id === Number(this.selectedStudentId)
       );
 
       if (!studentChapter) {
@@ -965,7 +1000,7 @@ export default {
         return;
       }
 
-      apiUrl = `/api/v1/chapter/${this.projectId}/addVersionWithLink?chapterId=${chapterId}`;
+      apiUrl = `/api/v1/chapter/addVersionWithLink?chapterIds=${chapterId}`;
       console.log('Request URL:', apiUrl);
 
       const response = await axios.post(apiUrl, linkData, {
@@ -1116,24 +1151,37 @@ export default {
       }
 
       try {
-        const response = await axios.get(`/api/v1/view/comments?versionId=${versionId}`);
+        const response = await axios.get(`/api/v1/view/version/${versionId}/comment`);
         console.log('Comment API response:', response.data);
 
-        if (response.data && response.data.comments && response.data.comments.length > 0) {
-          const comments = response.data.comments;
-          const latestComment = comments.sort((a, b) => b.id - a.id)[0];
-
-          this.fileComment = latestComment.text || '';
-          console.log('Latest comment found:', latestComment);
+        if (response.data && response.data.text) {
+          // Single comment object returned
+          this.fileComment = response.data.text || '';
+          console.log('Comment found:', response.data);
         } else {
           this.fileComment = '';
-          console.log('No comments found for version:', versionId);
+          console.log('No comment found for version:', versionId);
         }
 
         this.fileComments[versionId] = this.fileComment;
       } catch (error) {
-        console.error('Błąd przy pobieraniu komentarza:', error);
-        this.fileComment = '';
+        console.error('Error fetching comments:', error);
+        
+        // Handle 404 specifically - it just means no comments exist yet
+        if (error.response?.status === 404) {
+          console.log('No comments found (404) - this is normal for files without comments');
+          this.fileComment = '';
+          this.fileComments[versionId] = '';
+        } else {
+          // Other errors show a more specific message
+          console.error('Unexpected error fetching comments:', error);
+          this.fileComment = '';
+          
+          // Only show error message for non-404 errors
+          if (error.response?.status !== 404) {
+            this.errorMessage = 'Nie udało się pobrać komentarza do pliku.';
+          }
+        }
       }
     },
 
@@ -1176,6 +1224,40 @@ export default {
           console.log('Error checking for existing comments:', checkError);
         }
 
+        // Get chapter_id by finding which chapter the file belongs to
+        let chapterId = null;
+        try {
+          const chapters = await this.fetchChapters();
+          if (chapters && chapters.length > 0) {
+            // For promoters, find chapter belonging to selected student
+            if (this.isPromoter && this.selectedStudentId) {
+              const studentChapter = chapters.find(chapter => 
+                chapter.owner_id === Number(this.selectedStudentId)
+              );
+              chapterId = studentChapter ? studentChapter.id : null;
+            } 
+            // For students, find their own chapter
+            else if (!this.isPromoter) {
+              const userChapter = chapters.find(chapter => 
+                chapter.owner_id === Number(this.userId)
+              );
+              chapterId = userChapter ? userChapter.id : null;
+            }
+            // Fallback: use first chapter
+            if (!chapterId && chapters.length > 0) {
+              chapterId = chapters[0].id;
+            }
+          }
+          console.log('Found chapter_id for comment:', chapterId);
+        } catch (chapterError) {
+          console.error('Error fetching chapter_id for comment:', chapterError);
+        }
+
+        if (!chapterId) {
+          this.errorMessage = 'Nie można znaleźć rozdziału dla tego pliku. Nie można dodać komentarza.';
+          return;
+        }
+
         if (existingCommentId) {
           try {
             console.log(`Updating existing comment ${existingCommentId} with text: ${this.fileComment}`);
@@ -1204,6 +1286,7 @@ export default {
         const commentDto = {
           text: this.fileComment,
           uploader_id: parseInt(authStore.userId),
+          chapter_id: parseInt(chapterId),
           version_id: parseInt(this.selectedFileForComment.chapterVersionId || this.selectedFileForComment.id),
           fname: authStore.fname || "",
           lname: authStore.lname || ""
@@ -1219,7 +1302,7 @@ export default {
           commentDto.id = parseInt(existingCommentId);
         }
 
-        console.log('Creating new comment:', commentDto);
+        console.log('Creating new comment with updated format:', commentDto);
 
         const response = await axios.post('/api/v1/post/comment', commentDto);
         console.log('Save comment response:', response);
@@ -1400,40 +1483,35 @@ export default {
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('uploaderId', uploaderId.toString());
 
-        // New endpoint
-        const multiAuthorData = {
-          ownerIds: ownerIds
-        };
+        // Build query string with multiple ownerId parameters
+        const ownerIdParams = ownerIds.map(id => `ownerId=${id}`).join('&');
+        const url = `/api/v1/file?${ownerIdParams}&uploaderId=${uploaderId}`;
+        
+        console.log('Multi-author upload URL:', url);
 
-        // const response = await axios.post('/api/v1/files/multi-author', formData, {
-        //   headers: {
-        //     'Content-Type': 'multipart/form-data'
-        //   },
-        //   params: multiAuthorData
-        // });
-
-        // Temporary success message (usunac po dodaniu endpointa)
-        console.log('Would send multi-author file with data:', {
-          formData: {
-            file: file.name,
-            uploaderId: uploaderId
+        const response = await axios.post(url, formData, {
+          headers: { 
+            'Content-Type': 'multipart/form-data'
           },
-          ownerIds: ownerIds
+          timeout: 30000
         });
 
-        this.uploadSuccess = true;
-        this.errorMessage = '';
-        this.selectedFile = null;
-        if (this.$refs.fileInput) {
-          this.$refs.fileInput.value = '';
+        if (response.status === 200 && response.data && response.data > 0) {
+          this.uploadSuccess = true;
+          this.errorMessage = '';
+          this.selectedFile = null;
+          if (this.$refs.fileInput) {
+            this.$refs.fileInput.value = '';
+          }
+          
+          this.closeMultiAuthorModal();
+          
+          // Refresh files after upload
+          await this.fetchFiles();
+        } else {
+          throw new Error(`Multi-author upload failed. Server returned: ${response.data}`);
         }
-
-        this.closeMultiAuthorModal();
-
-        // Refresh files after upload (po dodaniu enpointa)
-        // await this.fetchFiles();
 
       } catch (error) {
         console.error('Multi-author upload error:', error);
@@ -1486,39 +1564,39 @@ export default {
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('uploaderId', uploaderId.toString());
 
-        const multiAuthorData = {
-          studentIds: selectedStudentIds
-        };
+        // Build query string with multiple ownerId parameters for selected students
+        const ownerIdParams = selectedStudentIds.map(id => `ownerId=${id}`).join('&');
+        const url = `/api/v1/file?${ownerIdParams}&uploaderId=${uploaderId}`;
+        
+        console.log('Promoter multi-author upload URL:', url);
 
-        // const response = await axios.post('/api/v1/files/promoter-multi-author', formData, {
-        //   headers: {
-        //     'Content-Type': 'multipart/form-data'
-        //   },
-        //   params: multiAuthorData
-        // });
-
-        // Temporary success message (usunac po dodaniu endpointa)
-        console.log('Would send promoter multi-author file with data:', {
-          formData: {
-            file: file.name,
-            uploaderId: uploaderId
+        const response = await axios.post(url, formData, {
+          headers: { 
+            'Content-Type': 'multipart/form-data'
           },
-          studentIds: selectedStudentIds
+          timeout: 30000
         });
 
-        this.uploadSuccess = true;
-        this.errorMessage = '';
-        this.selectedFile = null;
-        if (this.$refs.fileInput) {
-          this.$refs.fileInput.value = '';
+        if (response.status === 200 && response.data && response.data > 0) {
+          this.uploadSuccess = true;
+          this.errorMessage = '';
+          this.selectedFile = null;
+          if (this.$refs.fileInput) {
+            this.$refs.fileInput.value = '';
+          }
+          
+          this.closePromoterMultiAuthorModal();
+          
+          // Refresh files after upload
+          if (this.isPromoter) {
+            await this.fetchStudentFiles();
+          } else {
+            await this.fetchFiles();
+          }
+        } else {
+          throw new Error(`Promoter multi-author upload failed. Server returned: ${response.data}`);
         }
-
-        this.closePromoterMultiAuthorModal();
-
-        // Refresh files after upload (po dodaniu enpointa)
-        // await this.fetchFiles();
 
       } catch (error) {
         console.error('Promoter multi-author upload error:', error);
@@ -1547,46 +1625,139 @@ export default {
     },
 
     async sharePromoterMultiAuthorLink() {
+      console.log('=== PROMOTER MULTI-AUTHOR LINK SHARE CALLED ===');
+      
       if (this.promoterSelectedStudents.length === 0) {
+        console.log('No students selected');
         this.errorMessage = 'Musisz wybrać co najmniej jednego studenta.';
         return;
       }
 
-      if (!this.linkUrl || this.linkUrl.trim() === '') {
+      if (!this.oneNoteLink || this.oneNoteLink.trim() === '') {
+        console.log('No OneNote link provided');
         this.errorMessage = 'Musisz podać link do OneNote.';
         return;
       }
 
+      console.log('Selected students:', this.promoterSelectedStudents);
+      console.log('OneNote link:', this.oneNoteLink);
+
       try {
-        const sharerId = Number(this.userId);
+        const uploaderId = Number(this.userId);
         const selectedStudentIds = this.promoterSelectedStudents.map(id => Number(id));
 
         console.log('Promoter multi-author link share:', {
-          sharerId: sharerId,
+          uploaderId: uploaderId,
           studentIds: selectedStudentIds,
-          linkUrl: this.linkUrl
+          oneNoteLink: this.oneNoteLink
         });
 
-        const linkData = {
-          url: this.linkUrl,
-          sharerId: sharerId,
-          studentIds: selectedStudentIds
-        };
+        // Get chapters for all selected students
+        const chapters = await this.fetchChapters();
+        
+        if (!chapters || chapters.length === 0) {
+          this.errorMessage = 'Nie znaleziono rozdziałów dla tego projektu. Proszę najpierw utworzyć rozdziały.';
+          return;
+        }
 
-        // const response = await axios.post('/api/v1/links/promoter-multi-author', linkData);
+        // Find chapters for all selected students
+        const studentChapterIds = [];
+        for (const studentId of selectedStudentIds) {
+          const studentChapter = chapters.find(chapter => chapter.owner_id === Number(studentId));
+          if (studentChapter) {
+            studentChapterIds.push(studentChapter.id);
+          } else {
+            console.warn('No chapter found for student ID:', studentId);
+          }
+        }
 
-        this.linkSuccess = true;
-        this.errorMessage = '';
-        this.linkUrl = '';
+        if (studentChapterIds.length === 0) {
+          this.errorMessage = 'Nie znaleziono rozdziałów dla wybranych studentów. Proszę najpierw utworzyć rozdziały.';
+          return;
+        }
 
-        this.closePromoterMultiAuthorLinkModal();
+        console.log('Found chapters for students:', studentChapterIds);
 
-        // Refresh links after sharing (po dodaniu enpointa)
-        // await this.fetchLinks();
+        // Prepare request body for each student
+        const promises = selectedStudentIds.map(async (studentId) => {
+          const studentChapter = chapters.find(chapter => chapter.owner_id === Number(studentId));
+          if (!studentChapter) {
+            throw new Error(`No chapter found for student ${studentId}`);
+          }
+
+          const linkData = {
+            owner_user_data_id: Number(studentId),
+            uploader_user_data_id: uploaderId,
+            link: this.oneNoteLink
+          };
+
+          const apiUrl = `/api/v1/chapter/addVersionWithLink?chapterIds=${studentChapter.id}`;
+          console.log('Multi-author link request URL:', apiUrl);
+          console.log('Multi-author link data:', linkData);
+
+          return axios.post(apiUrl, linkData, {
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          });
+        });
+
+        console.log('Executing', promises.length, 'API requests...');
+
+        // Execute all requests
+        const responses = await Promise.all(promises);
+
+        console.log('All responses received:', responses.map(r => ({ status: r.status, data: r.data })));
+
+        // Check if all requests were successful
+        const allSuccessful = responses.every(response => 
+          response.status === 200 || response.status === 201
+        );
+
+        if (allSuccessful) {
+          this.uploadSuccess = true;
+          this.errorMessage = '';
+          this.oneNoteLink = '';
+
+          this.closePromoterMultiAuthorLinkModal();
+
+          // Refresh files after sharing
+          if (this.selectedStudentId) {
+            await this.fetchStudentFiles();
+          }
+
+          console.log('Multi-author OneNote links shared successfully');
+        } else {
+          throw new Error('Some requests failed');
+        }
 
       } catch (error) {
         console.error('Promoter multi-author link share error:', error);
-        this.errorMessage = 'Nie udało się udostępnić linku wieloautorskiego.';
+        
+        let errorMessage = 'Nie udało się udostępnić linku wieloautorskiego.';
+        
+        if (error.response) {
+          const status = error.response.status;
+          const data = error.response.data;
+
+          console.error('API Error:', { status, data });
+
+          if (status === 400) {
+            errorMessage = 'Nieprawidłowe dane. Sprawdź poprawność linku i wybranych studentów.';
+          } else if (status === 404) {
+            errorMessage = 'Nie znaleziono rozdziałów dla wybranych studentów.';
+          } else if (status === 500) {
+            errorMessage = 'Błąd serwera przy przetwarzaniu żądania.';
+          } else {
+            errorMessage = `Błąd serwera (${status}): ${data?.message || 'Nieznany błąd'}`;
+          }
+        } else if (error.message) {
+          errorMessage = `Błąd: ${error.message}`;
+        }
+        
+        this.errorMessage = errorMessage;
+        console.log('Error message set:', this.errorMessage);
       }
     },
     async fetchThesisTitle() {

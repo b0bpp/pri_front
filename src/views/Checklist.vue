@@ -131,34 +131,27 @@ export default {
             console.log('Fetching checklist for chapter version ID:', this.chapterVersion);
             this.loading = true;
             try {               
-                const response = await axios.get(`/api/v1/view/note`, {
-                    params: { 
-                        id: this.chapterVersion  
-                    }
-                });
+                const response = await axios.get(`/api/v1/view/version/${this.chapterVersion}/note`);
                 console.log('Checklist response:', response.data);
                 
                 console.log('Response structure:', JSON.stringify(response.data, null, 2));
                 
                 if (response.data && Object.keys(response.data).length > 0) {
                     this.checklist = response.data;         
-                    if (response.data.present === true && response.data.value) {
-                        this.checklist = response.data.value;
-                        console.log('Unwrapped checklist from Optional response');
-                    }
-
-                    if (response.data.project_id) {
-                        this.projectId = response.data.project_id;
-                        console.log('Retrieved projectId from checklist data:', this.projectId);
+                    
+                    // Handle new response structure
+                    if (response.data.chapter_id) {
+                        console.log('Found chapter_id in response:', response.data.chapter_id);
                     }
                     
                     if (this.checklist.models && this.checklist.models.length > 0) {
                         console.log(`Processing ${this.checklist.models.length} checklist items`);
                         
                         this.checklist.models.forEach(question => { 
-                            question.points = question.points != null ? (Number(question.points) > 0 ? 1 : 0) : 0;
-                            question.checked = question.points > 0;
-                            console.log(`Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
+                            // Handle new 'passed' field instead of 'points'
+                            question.checked = question.passed || false;
+                            question.points = question.passed ? 1 : 0;
+                            console.log(`Question ${question.id} loaded with passed: ${question.passed}, checked: ${question.checked}`);
                         });
                         
                         if (!this.checklist.checklistQuestionModels) {
@@ -167,47 +160,52 @@ export default {
                     } else {
                         console.warn('No checklist models found in the response');
                     }
-                } else if (!response.data || Object.keys(response.data).length === 0 || response.data.present === false) {
-                    console.warn('Empty response data received or Optional.empty() returned');
+                } else {
+                    console.warn('Empty response data received');
                     this.checklist = {
                         id: null,
                         isPassed: false,
                         models: [],
                         checklistQuestionModels: [],
-                        versionId: this.chapterVersion
+                        version_id: this.chapterVersion
                     };
                 }
                 
                 this.updateChecklistPassedStatus();
                 
             } catch (error) {
-                console.error('Błąd przy pobieraniu checklisty:', error);
-                this.errorMessage = 'Nie udało się pobrać checklisty.';
-                setTimeout(async () => {
-                    try {
-                        console.log('Retrying checklist fetch for chapter version ID:', this.chapterVersion);
-                        const retryResponse = await axios.get(`/api/v1/view/note`, {
-                            params: { id: this.chapterVersion } 
-                        });
-                        
-                        if (retryResponse.data) {
-                            if (retryResponse.data.present === true && retryResponse.data.value) {
-                                this.checklist = retryResponse.data.value;
-                                console.log('Unwrapped checklist from Optional response during retry');
-                            } else {
-                                this.checklist = retryResponse.data;
-                            }
-                            
-                            console.log('Successfully retrieved checklist on retry');
-                            this.errorMessage = '';
-                            this.updateChecklistPassedStatus();
-                        }
-                    } catch (retryError) {
-                        console.error('Retry also failed:', retryError);
-                    } finally {
-                        this.loading = false;
+                console.error('Error fetching checklist:', error);
+                
+                // Handle 404 specifically - no checklist exists yet
+                if (error.response?.status === 404) {
+                    console.log('No checklist found (404) - this is normal for files without checklists');
+                    this.checklist = {
+                        id: null,
+                        isPassed: false,
+                        models: [],
+                        checklistQuestionModels: [],
+                        version_id: this.chapterVersion
+                    };
+                    this.errorMessage = '';
+                } else if (error.response?.status === 500) {
+                    
+                    const errorData = error.response.data;
+                    if (typeof errorData === 'string' && errorData.includes('NullPointerException')) {
+                        console.log('Backend null pointer - no checklist exists for this version');
+                        this.checklist = {
+                            id: null,
+                            isPassed: false,
+                            models: [],
+                            checklistQuestionModels: [],
+                            version_id: this.chapterVersion
+                        };
+                        this.errorMessage = '';
+                    } else {
+                        this.errorMessage = 'Błąd serwera przy pobieraniu checklisty.';
                     }
-                }, 1000);
+                } else {
+                    this.errorMessage = 'Nie udało się pobrać checklisty.';
+                }
             } finally {
                 this.loading = false;
             }
@@ -349,27 +347,34 @@ export default {
             this.errorMessage = '';
             this.successMessage = '';
             
+            if (!this.chapterVersion) {
+                console.error('Cannot save checklist: chapter version ID is missing');
+                this.errorMessage = 'Nie można zapisać checklisty: brak ID wersji';
+                this.loading = false;
+                return;
+            }
+            
             try {
-                let checklistExists = false;
-                try {
-                    const checkResponse = await axios.get(`/api/v1/view/note`, {
-                        params: { id: this.chapterVersion } 
-                    });
-                    
-                    if (checkResponse.data && Object.keys(checkResponse.data).length > 0) {
-                        checklistExists = true;
-                        console.log('Found existing checklist for chapter version ID:', this.chapterVersion);
-                    }
-                } catch (fetchError) {
-                    console.error('Error checking if checklist exists:', fetchError);
-                }
-                
                 const items = this.getChecklistItems();
                 const checklistDto = this.createChecklistDto(items);
 
                 if (!checklistDto.version_id || checklistDto.version_id <= 0) {
                     console.warn('Invalid version_id, using chapterVersion:', this.chapterVersion);
                     checklistDto.version_id = parseInt(this.chapterVersion, 10);
+                }
+
+                // Add chapter_id if available from the current checklist
+                if (this.checklist?.chapter_id) {
+                    checklistDto.chapter_id = this.checklist.chapter_id;
+                }
+
+                if (checklistDto.models) {
+                    checklistDto.models = checklistDto.models.map(item => ({
+                        id: item.id,
+                        value: item.value,
+                        category: item.category || 'general',
+                        passed: item.points > 0,
+                    }));
                 }
 
                 console.log('Saving checklist with structure:', JSON.stringify(checklistDto, null, 2));
@@ -383,11 +388,29 @@ export default {
                 const response = await axios.post('/api/v1/post/note', checklistDto, config);
                 console.log('Save response:', response);
                 
-                if (response.data === true) {
+                if (response.data === true || response.data) {
                     this.successMessage = 'Checklist została zapisana pomyślnie.';
                     setTimeout(() => {
                         this.successMessage = '';
                     }, 3000);
+
+                    // Update local checklist data if response contains updated information
+                    if (response.data && typeof response.data === 'object') {
+                        if (response.data.chapter_id && !this.checklist.chapter_id) {
+                            this.checklist.chapter_id = response.data.chapter_id;
+                        }
+                        
+                        if (response.data.models) {
+                            this.checklist.models.forEach(localItem => {
+                                const responseItem = response.data.models.find(m => m.id === localItem.id);
+                                if (responseItem) {
+                                    localItem.passed = responseItem.passed;
+                                    localItem.checked = responseItem.passed;
+                                    localItem.points = responseItem.passed ? 1 : 0;
+                                }
+                            });
+                        }
+                    }
 
                     await this.fetchChecklist();
                     this.verifyChanges(items);
@@ -395,57 +418,27 @@ export default {
                     throw new Error(`Unexpected response from server: ${response.data}`);
                 }
             } catch (error) {
-                console.error('Błąd przy zapisywaniu checklisty:', error);
+                console.error('Error saving checklist:', error);
          
                 let errorMsg = 'Nie udało się zapisać checklisty';
                 if (error.response && error.response.status) {
                     errorMsg += ` (kod błędu: ${error.response.status})`;
+                    
                     if (error.response.status === 500) {
-                        console.log('Server error occurred, attempting auto-recovery...');                     
-                        try {
-                            this.errorMessage = 'Próba odzyskania checklisty...';
-                            const recoveryResponse = await axios.get(`/api/v1/view/note`, {
-                                params: { id: this.chapterVersion } 
-                            });                            
-                            console.log('Recovery successful, trying to save again for chapter version ID:', this.chapterVersion);
-                            
-                            if (recoveryResponse.data) {
-                                if (recoveryResponse.data.present === true && recoveryResponse.data.value) {
-                                    this.checklist = recoveryResponse.data.value;
-                                    console.log('Unwrapped checklist from Optional response during recovery');
-                                } else {
-                                    this.checklist = recoveryResponse.data;
-                                }
-                                
-                                if (this.checklist.models && this.checklist.models.length > 0) {
-                                    this.checklist.models.forEach(question => {                                    
-                                        question.points = question.points != null ? Number(question.points) : 0;                                        
-                                        question.checked = question.points > 0;
-                                        console.log(`Recovery: Question ${question.id} loaded with points: ${question.points}, checked: ${question.checked}`);
-                                    });
-                                }
-                                const items = this.getChecklistItems();
-                                const recoveryDto = this.createChecklistDto(items);
-                                
-                                const recoveryConfig = {
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    }
-                                };
-                                
-                                await axios.post('/api/v1/post/note', recoveryDto, recoveryConfig);
-                                
-                                this.successMessage = 'Udało się odzyskać i zapisać checklistę.';
-                                setTimeout(() => {
-                                    this.successMessage = '';
-                                }, 3000);
-                                
-                                await this.fetchChecklist();
-                                return;
-                            }
-                        } catch (recoveryError) {
-                            console.error('Recovery attempt failed:', recoveryError);
-                            errorMsg += ': Próba odzyskania nie powiodła się';
+                        const errorData = error.response.data;
+                        if (typeof errorData === 'string' && errorData.includes('NullPointerException')) {
+                            console.log('Backend null pointer - attempting to continue...');
+                            errorMsg = 'Błąd serwera: brak danych kontekstu. Spróbuj ponownie.';
+                        }
+                    }
+                    
+                    if (error.response.data) {
+                        console.error('Error details:', error.response.data);
+                        
+                        if (typeof error.response.data === 'string') {
+                            errorMsg += `: ${error.response.data}`;
+                        } else if (error.response.data.message) {
+                            errorMsg += `: ${error.response.data.message}`;
                         }
                     }
                 }
@@ -454,10 +447,6 @@ export default {
                     errorMsg += `: ${error.message}`;
                 }
                 this.errorMessage = errorMsg;
-                
-                if (error.response?.data) {
-                    console.error('Error details:', error.response.data);
-                }
 
                 setTimeout(() => {
                     this.errorMessage = '';
