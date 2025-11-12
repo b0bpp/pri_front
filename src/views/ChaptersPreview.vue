@@ -428,8 +428,11 @@ export default {
       this.verifySupervisorStatus();
     }
 
-    if (this.userId) {
+    if (this.userId && !this.isPromoter) {
+      console.log('Fetching files for student user ID:', this.userId);
       this.fetchFiles();
+    } else if (this.isPromoter) {
+      console.log('Promoter detected - skipping initial file fetch. Files will load when student is selected.');
     } else {
       this.errorMessage = 'Brak zalogowanego użytkownika. Proszę zalogować się ponownie.';
     }
@@ -567,6 +570,11 @@ export default {
     },
 
     async fetchFiles() {
+      if (this.isPromoter) {
+        console.log('Promoter attempting to call fetchFiles - this should use fetchStudentFiles instead');
+        return;
+      }
+
       if (!this.userId) {
         this.errorMessage = 'Brak ID użytkownika. Proszę zalogować się ponownie.';
         return;
@@ -1508,7 +1516,11 @@ export default {
           this.closeMultiAuthorModal();
           
           // Refresh files after upload
-          await this.fetchFiles();
+          if (this.isPromoter) {
+            await this.fetchStudentFiles();
+          } else {
+            await this.fetchFiles();
+          }
         } else {
           throw new Error(`Multi-author upload failed. Server returned: ${response.data}`);
         }
