@@ -17,6 +17,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: jarrobots/pri_frontend
 
+
 permissions:
   contents: read
   packages: write
