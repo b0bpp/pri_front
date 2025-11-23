@@ -60,10 +60,28 @@
             <router-link to="/" class="text-decoration-none" @click="toggleSidebar">Home</router-link>
           </li>
           <li class="list-group-item border-0">
-            <router-link to="/groups-panel" class="text-decoration-none" @click="toggleSidebar">Panel grup</router-link>
+            <router-link 
+              to="/groups-panel" 
+              class="text-decoration-none" 
+              @click="toggleSidebar"
+              title="Główny widok. Sprawdź grupy i ich studentów oraz etapy w jakich znajdują się ich prace."
+            >Panel grup</router-link>
           </li>
           <li class="list-group-item border-0" v-if="authStore.userId">
-            <router-link to="/chapters-preview/1" class="text-decoration-none" @click="toggleSidebar">Przegląd rozdziałów</router-link>
+            <router-link 
+              to="/chapters-preview/1" 
+              class="text-decoration-none" 
+              @click="toggleSidebar"
+              title="Sprawdź przesłane przez studentów wersje."
+            >Przegląd rozdziałów</router-link>
+          </li>
+          <li class="list-group-item border-0">
+            <router-link 
+              to="/checklist-maker" 
+              class="text-decoration-none" 
+              @click="toggleSidebar"
+              title="Twórz własne szablony checklist, które będą używane do oceny prac studentów."
+            >Kreator checklist</router-link>
           </li>
         </ul>
       </div>
@@ -194,7 +212,7 @@ export default {
       this.sidebarOpen = !this.sidebarOpen;
     },
     handleClickOutside(event) {
-      if (!authStore.isPromoter) return; // Only handle for promoters
+      if (!authStore.isPromoter) return; 
       
       setTimeout(() => {
         const sidebar = this.$refs.sidebar;
