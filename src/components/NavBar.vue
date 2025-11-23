@@ -86,7 +86,9 @@
       </nav>
       
       <!-- Router view will be rendered here by the parent App.vue -->
-      <slot></slot>
+      <div class="content-wrapper">
+        <slot></slot>
+      </div>
     </div>
   </div>
 </template>
