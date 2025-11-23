@@ -121,7 +121,7 @@
               <button class="action-btn preview-btn" @click="previewFile(file)">
                 Podgląd
               </button>
-              <button class="action-btn checklist-btn" @click="goToFileChecklist(file)">
+              <button v-if="isUploadedByPromoter(file)" class="action-btn checklist-btn" @click="goToFileChecklist(file)">
                 Checklista
               </button>
               <button class="action-btn comment-btn" @click="openCommentModal(file)">
@@ -357,6 +357,7 @@ export default {
     return {
       isPromoter: authStore.isPromoter,
       isSupervisor: false,
+      supervisorId: null,
       selectedStudentId: '',
       students: [],
       files: [],
@@ -432,6 +433,11 @@ export default {
       this.verifySupervisorStatus();
     }
 
+    // Always fetch supervisor ID to enable checklist filtering for both students and promoters
+    if (this.projectId) {
+      this.fetchSupervisorId();
+    }
+
     if (this.userId && !this.isPromoter) {
       console.log('Fetching files for student user ID:', this.userId);
       this.fetchFiles();
@@ -451,6 +457,38 @@ export default {
 
     goBack() {
       this.$router.push({ name: 'GroupsPanel' });
+    },
+
+    async fetchSupervisorId() {
+      if (!this.projectId) {
+        console.warn('Cannot fetch supervisor ID: missing project ID');
+        return;
+      }
+
+      try {
+        console.log('Fetching supervisor ID for project:', this.projectId);
+        const response = await axios.get('/api/v1/view/groups/all');
+
+        if (response.data && response.data.dtos && Array.isArray(response.data.dtos)) {
+          const allGroups = response.data.dtos;
+          console.log('All groups data for supervisor lookup:', allGroups);
+
+          const targetGroup = allGroups.find(group =>
+            group.project_id === Number(this.projectId) ||
+            group.project_id === this.projectId
+          );
+
+          if (targetGroup && targetGroup.supervisor) {
+            this.supervisorId = targetGroup.supervisor.id;
+            console.log('Found supervisor ID for project:', this.projectId, '-> Supervisor ID:', this.supervisorId);
+            console.log('Supervisor details:', targetGroup.supervisor);
+          } else {
+            console.warn('No supervisor found for project:', this.projectId);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching supervisor ID:', error);
+      }
     },
 
     async verifySupervisorStatus() {
@@ -486,6 +524,9 @@ export default {
 
             const supervisorId = targetGroup.supervisor?.id;
             const userId = Number(authStore.userId);
+            
+            // Store supervisor ID for later use
+            this.supervisorId = supervisorId;
 
             console.log('Group supervisor ID:', supervisorId, 'Current user ID:', userId);
 
@@ -778,6 +819,26 @@ export default {
           link: version.link
         };
       });
+    },
+
+    isUploadedByPromoter(file) {
+      // Check if file was uploaded by the supervisor (promoter)
+      if (!file.uploaderId || !this.supervisorId) {
+        return false;
+      }
+      
+      // Convert to numbers to ensure proper comparison
+      const uploaderId = Number(file.uploaderId);
+      const supervisorId = Number(this.supervisorId);
+      
+      console.log('Checking if file uploaded by promoter:', {
+        fileName: file.name,
+        uploaderId: uploaderId,
+        supervisorId: supervisorId,
+        isPromoterUpload: uploaderId === supervisorId
+      });
+      
+      return uploaderId === supervisorId;
     },
 
     handleFileChange(event) {
